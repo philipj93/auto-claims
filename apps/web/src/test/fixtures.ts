@@ -38,6 +38,7 @@ export const claimId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 export const alice: User = {
   id: aliceId,
+  username: 'alice',
   firstName: 'Alice',
   lastName: 'Nguyen',
   email: 'alice@example.com',
@@ -52,6 +53,7 @@ export const alice: User = {
 
 export const bob: User = {
   id: bobId,
+  username: 'bob',
   firstName: 'Bob',
   lastName: 'Smith',
   email: 'bob@example.com',
