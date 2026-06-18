@@ -51,6 +51,7 @@ export enum DocumentType {
 
 export interface User {
   id: string;
+  username: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -166,4 +167,42 @@ export interface UpdateClaimStatusInput {
   status: ClaimStatus;
   approvedAmount?: number;
   adjusterName?: string;
+}
+
+// ----- Auth -----
+
+/** Credentials for POST /api/auth/login. */
+export interface LoginInput {
+  username: string;
+  password: string;
+}
+
+/** Body for POST /api/auth/register — creates a user and signs them in. */
+export interface CreateUserInput {
+  username: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** Safe, public view of the authenticated user — never includes the password hash. */
+export interface AuthUser {
+  id: string;
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** Response from login/register: the bearer token plus the signed-in user. */
+export interface AuthResponse {
+  accessToken: string;
+  user: AuthUser;
+}
+
+/** Decoded JWT claims. `sub` is the user id. */
+export interface JwtPayload {
+  sub: string;
+  username: string;
 }
