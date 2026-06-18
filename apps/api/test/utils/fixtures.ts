@@ -17,9 +17,11 @@ export const POLICY_ID = '44444444-4444-4444-8444-444444444444';
 export function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: USER_ID,
+    username: 'ada',
     firstName: 'Ada',
     lastName: 'Lovelace',
     email: 'ada@example.com',
+    passwordHash: '$2b$10$test.hash.value.placeholder.for.fixturesxxxxxxxxxxxx',
     phone: '555-0100',
     addressLine1: '1 Analytical Way',
     city: 'London',

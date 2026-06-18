@@ -136,4 +136,43 @@ export class UsersService {
       order: { reportedDate: 'DESC' },
     });
   }
+
+  /**
+   * Look a user up by username for authentication. Unlike every other read,
+   * this explicitly selects `passwordHash` (the column is `select: false`),
+   * so the result is safe to verify against but must never be returned as-is.
+   */
+  findByUsername(username: string): Promise<User | null> {
+    return this.users.findOne({
+      where: { username },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        passwordHash: true,
+      },
+    });
+  }
+
+  /** True if any user already uses this username or email (registration guard). */
+  async existsByUsernameOrEmail(username: string, email: string): Promise<boolean> {
+    const existing = await this.users.findOne({
+      where: [{ username }, { email }],
+      select: { id: true },
+    });
+    return existing !== null;
+  }
+
+  /** Persist a new user. The caller supplies an already-hashed password. */
+  createUser(data: {
+    username: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    passwordHash: string;
+  }): Promise<User> {
+    return this.users.save(this.users.create(data));
+  }
 }
