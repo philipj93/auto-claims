@@ -38,16 +38,16 @@ describe('AuthService', () => {
   describe('login', () => {
     it('returns a token and safe user for valid credentials', async () => {
       const hash = await hashPassword('Sup3r$ecret');
-      usersService.findByUsername.mockResolvedValue(makeUser({ username: 'ada', passwordHash: hash }));
+      usersService.findByUsername.mockResolvedValue(
+        makeUser({ username: 'ada', passwordHash: hash }),
+      );
 
       const result = await service.login({ username: 'ada', password: 'Sup3r$ecret' });
 
       expect(result.accessToken).toBe('signed.jwt.token');
       expect(result.user).toMatchObject({ username: 'ada' });
       expect(result.user).not.toHaveProperty('passwordHash');
-      expect(jwt.signAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ username: 'ada' }),
-      );
+      expect(jwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ username: 'ada' }));
     });
 
     it('throws Unauthorized for an unknown user', async () => {
@@ -60,9 +60,9 @@ describe('AuthService', () => {
     it('throws Unauthorized for a wrong password', async () => {
       const hash = await hashPassword('correct-pw');
       usersService.findByUsername.mockResolvedValue(makeUser({ passwordHash: hash }));
-      await expect(
-        service.login({ username: 'ada', password: 'wrong-pw' }),
-      ).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login({ username: 'ada', password: 'wrong-pw' })).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
   });
 

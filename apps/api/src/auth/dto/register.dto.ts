@@ -12,7 +12,13 @@ export class RegisterDto implements CreateUserInput {
   @MaxLength(200)
   email: string;
 
-  @IsStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 1 })
+  @IsStrongPassword({
+    minLength: 8,
+    minLowercase: 1,
+    minUppercase: 1,
+    minNumbers: 1,
+    minSymbols: 1,
+  })
   password: string;
 
   @IsString()
