@@ -3,5 +3,6 @@ packages:
   - "packages/*"
 allowBuilds:
   '@swc/core': true
+  bcrypt: true
   msw: true
   sharp: true
