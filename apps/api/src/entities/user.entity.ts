@@ -24,7 +24,18 @@ export class User {
 
   @Index({ unique: true })
   @Column()
+  username: string;
+
+  @Index({ unique: true })
+  @Column()
   email: string;
+
+  /**
+   * bcrypt hash. `select: false` keeps it out of every default query — load it
+   * explicitly (e.g. UsersService.findByUsername) only for credential checks.
+   */
+  @Column({ name: 'password_hash', select: false })
+  passwordHash: string;
 
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;
