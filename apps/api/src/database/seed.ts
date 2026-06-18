@@ -7,6 +7,7 @@ import {
   FaultDetermination,
   PolicyStatus,
 } from '@repo/types';
+import { hashPassword } from '../auth/hashing';
 import { AppDataSource } from './data-source';
 import { User } from '../entities/user.entity';
 import { Vehicle } from '../entities/vehicle.entity';
@@ -62,15 +63,27 @@ async function seed() {
   const NUM_USERS = 50;
   let totalClaims = 0;
 
+  // Every seeded account shares this password so the data is easy to log into.
+  const SEED_PASSWORD = 'Password123!';
+  const seedPasswordHash = await hashPassword(SEED_PASSWORD);
+  console.log(`🔑 All seeded users share the password: ${SEED_PASSWORD}`);
+
   for (let u = 0; u < NUM_USERS; u++) {
     const firstName = faker.person.firstName();
     const lastName = faker.person.lastName();
 
+    const username = faker.internet
+      .username({ firstName, lastName })
+      .toLowerCase()
+      .replace(/[^a-z0-9_.]/g, '');
     const user = await userRepo.save(
       userRepo.create({
         firstName,
         lastName,
+        // Suffix with the loop index to guarantee uniqueness across 50 users.
+        username: `${username}${u}`,
         email: faker.internet.email({ firstName, lastName }).toLowerCase(),
+        passwordHash: seedPasswordHash,
         phone: faker.phone.number({ style: 'national' }),
         addressLine1: faker.location.streetAddress(),
         city: faker.location.city(),
@@ -79,9 +92,9 @@ async function seed() {
       }),
     );
 
-    // 1–2 vehicles per user
+    // 1–3 vehicles per user
     const vehicles: Vehicle[] = [];
-    const numVehicles = faker.number.int({ min: 1, max: 2 });
+    const numVehicles = faker.number.int({ min: 1, max: 3 });
     for (let v = 0; v < numVehicles; v++) {
       const make = pick(Object.keys(VEHICLE_MAKES));
       const model = pick(VEHICLE_MAKES[make]);
@@ -100,27 +113,37 @@ async function seed() {
       );
     }
 
-    // One active policy per user
-    const effective = faker.date.past({ years: 1 });
-    const expiration = new Date(effective);
-    expiration.setFullYear(expiration.getFullYear() + 1);
-    const policy = await policyRepo.save(
-      policyRepo.create({
-        policyNumber: policyNumber(),
-        status: PolicyStatus.ACTIVE,
-        premium: faker.number.float({ min: 900, max: 2400, fractionDigits: 2 }),
-        deductible: pick([250, 500, 1000]),
-        coverageLimit: pick([50000, 100000, 250000]),
-        effectiveDate: effective.toISOString().slice(0, 10),
-        expirationDate: expiration.toISOString().slice(0, 10),
-        userId: user.id,
-      }),
-    );
+    // 1–3 policies per user (first ACTIVE, rest varied)
+    const POLICY_STATUSES = Object.values(PolicyStatus);
+    const numPolicies = faker.number.int({ min: 1, max: 3 });
+    const policies: Policy[] = [];
+    for (let p = 0; p < numPolicies; p++) {
+      const effective = faker.date.past({ years: 2 });
+      const expiration = new Date(effective);
+      expiration.setFullYear(expiration.getFullYear() + 1);
+      policies.push(
+        await policyRepo.save(
+          policyRepo.create({
+            policyNumber: policyNumber(),
+            // First policy is always ACTIVE so each user has a usable policy;
+            // the rest vary across the full enum to exercise every status.
+            status: p === 0 ? PolicyStatus.ACTIVE : pick(POLICY_STATUSES),
+            premium: faker.number.float({ min: 900, max: 2400, fractionDigits: 2 }),
+            deductible: pick([250, 500, 1000]),
+            coverageLimit: pick([50000, 100000, 250000]),
+            effectiveDate: effective.toISOString().slice(0, 10),
+            expirationDate: expiration.toISOString().slice(0, 10),
+            userId: user.id,
+          }),
+        ),
+      );
+    }
 
-    // 1–5 claims per user
-    const numClaims = faker.number.int({ min: 1, max: 5 });
+    // 3–12 claims per user
+    const numClaims = faker.number.int({ min: 3, max: 12 });
     for (let c = 0; c < numClaims; c++) {
       const vehicle = pick(vehicles);
+      const policy = pick(policies);
       const incidentDate = faker.date.recent({ days: 365 });
       // Reported 0–5 days after the incident, but never in the future — adding
       // the offset to a very recent incident could otherwise overshoot `now`,
@@ -143,7 +166,7 @@ async function seed() {
       const injuryReported = faker.datatype.boolean({ probability: 0.25 });
 
       const documents: ClaimDocument[] = [];
-      const numDocs = faker.number.int({ min: 1, max: 4 });
+      const numDocs = faker.number.int({ min: 1, max: 6 });
       for (let d = 0; d < numDocs; d++) {
         const type = pick(Object.values(DocumentType));
         documents.push(
@@ -158,7 +181,7 @@ async function seed() {
       }
 
       const notes: ClaimNote[] = [];
-      const numNotes = faker.number.int({ min: 1, max: 3 });
+      const numNotes = faker.number.int({ min: 1, max: 4 });
       // Notes land between the report date and now; guard against `from === to`.
       const noteTo = new Date(Math.max(reportedDate.getTime() + 1, Date.now()));
       for (let n = 0; n < numNotes; n++) {
@@ -209,7 +232,23 @@ async function seed() {
     console.log(`👤 ${firstName} ${lastName} — ${numVehicles} vehicle(s), ${numClaims} claim(s)`);
   }
 
-  console.log(`\n✅ Seed complete: ${NUM_USERS} users, ${totalClaims} claims`);
+  const demo = await userRepo.save(
+    userRepo.create({
+      firstName: 'Demo',
+      lastName: 'User',
+      username: 'demo',
+      email: 'demo@example.com',
+      passwordHash: seedPasswordHash,
+      phone: faker.phone.number({ style: 'national' }),
+      addressLine1: faker.location.streetAddress(),
+      city: faker.location.city(),
+      state: faker.location.state({ abbreviated: true }),
+      postalCode: faker.location.zipCode(),
+    }),
+  );
+  console.log(`\n🎟️  Demo login → username: demo  password: ${SEED_PASSWORD} (id: ${demo.id})`);
+
+  console.log(`\n✅ Seed complete: ${NUM_USERS + 1} users, ${totalClaims} claims`);
   await AppDataSource.destroy();
 }
 
