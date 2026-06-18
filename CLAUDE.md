@@ -41,12 +41,12 @@ gh pr create --base main \
 
 ## Subagent model selection
 
-When dispatching subagents (e.g. during subagent-driven development), choose the model by task complexity:
+When dispatching subagents (e.g. during subagent-driven development), **default to the same model the main execution is using** — match the parent. Only **downgrade one step for very basic tasks** (single-file or mechanical changes, complete code already specified, transcription + tests).
 
-- **Simple tasks** (single-file or mechanical changes, complete code already specified, transcription + tests) → **sonnet**
-- **Medium/complex tasks** (multi-file integration, design judgment, debugging, broad codebase understanding) → **opus**
+- **Default (matches main):** if the main loop is on **opus**, dispatch implementer/reviewer subagents on **opus**.
+- **Very basic task → downgrade one step:** opus → **sonnet** (sonnet → **haiku** only if the main loop is already on sonnet).
 
-This overrides the generic "use the cheapest model that works" heuristic — do not dispatch implementer/reviewer subagents on haiku.
+This overrides the generic "use the cheapest model that works" heuristic. When in doubt, match the parent rather than downgrade — a task is only "very basic" when the work is mechanical and fully specified.
 
 ## Project overview
 
