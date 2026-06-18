@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@swc/core': true
+  msw: true
+  sharp: true

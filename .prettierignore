@@ -1,0 +1,12 @@
+# Build output
+**/dist/**
+**/.next/**
+**/.turbo/**
+**/coverage/**
+
+# Dependencies & lockfiles
+**/node_modules/**
+pnpm-lock.yaml
+
+# Generated
+**/next-env.d.ts

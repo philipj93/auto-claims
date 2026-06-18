@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: API (migrations + tests)
+    runs-on: ubuntu-latest
+
+    # Ephemeral, EMPTY Postgres — the schema is built only from committed migrations,
+    # which is what lets us detect entities that drifted away from them.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: claims_user
+          POSTGRES_PASSWORD: claims_pass
+          POSTGRES_DB: claims_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claims_user -d claims_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: claims_user
+      DB_PASSWORD: claims_pass
+      DB_NAME: claims_db
+      # Migrations are the source of truth in CI/prod — never synchronize here.
+      DB_SYNCHRONIZE: 'false'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Shared types must be built before the API can compile/run.
+      - run: pnpm --filter @repo/types build
+
+      # 1. Build the schema purely from committed migrations.
+      - name: Apply migrations
+        run: pnpm --filter @repo/api migration:run
+
+      # 2. Fail the build if the entities would require a migration that
+      #    isn't committed (i.e. someone changed an entity but, because dev
+      #    uses synchronize, forgot to generate + commit the migration).
+      - name: Verify migrations are in sync with entities
+        run: pnpm --filter @repo/api migration:check
+
+      - name: Test
+        run: pnpm --filter @repo/api test

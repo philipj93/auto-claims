@@ -1,0 +1,19 @@
+{
+  "$schema": "https://swc.rs/schema.json",
+  "sourceMaps": true,
+  "jsc": {
+    "parser": {
+      "syntax": "typescript",
+      "decorators": true,
+      "dynamicImport": true
+    },
+    "baseUrl": "./",
+    "target": "es2021",
+    "transform": {
+      "legacyDecorator": true,
+      "decoratorMetadata": true,
+      "useDefineForClassFields": false
+    }
+  },
+  "minify": false
+}

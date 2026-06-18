@@ -1,0 +1,38 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+dist
+.next
+out
+build
+*.tsbuildinfo
+
+# turbo
+.turbo
+
+# test output
+coverage
+playwright-report
+test-results
+.playwright
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# subagent-driven-development scratch (should live under .git, not the worktree)
+sdd/

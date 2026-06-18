@@ -1,0 +1,26 @@
+{
+  "name": "auto-claims-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "db:seed": "turbo run db:seed --filter=@repo/api",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "check-types": "turbo run check-types",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260616.1",
+    "prettier": "^3.8.4",
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.3"
+  }
+}

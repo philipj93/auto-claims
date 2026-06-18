@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude auto-mode *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('environment entries:'\\); [print\\('  -',e\\) for e in d.get\\('environment',[]\\)]\")"
+    ]
+  }
+}

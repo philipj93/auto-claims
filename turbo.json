@@ -1,0 +1,42 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": ["CI", "API_URL", "MOCK_API_PORT"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "db:seed": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "lint": {},
+    "lint:fix": {
+      "cache": false
+    },
+    "check-types": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "format": {
+      "cache": false
+    },
+    "format:check": {},
+    "clean": {
+      "cache": false
+    }
+  }
+}
