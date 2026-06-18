@@ -46,7 +46,11 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** Thrown when the API rejects the token; pages catch this to redirect to /login. */
+/**
+ * Thrown by `loginRequest` when login credentials are rejected, so the login
+ * form can show an error. Distinct from the expired-token path: `apiGet`
+ * redirects to /login itself rather than throwing this.
+ */
 export class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized');
