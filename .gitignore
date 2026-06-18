@@ -39,3 +39,7 @@ pnpm-debug.log*
 
 # subagent-driven-development scratch (should live under .git, not the worktree)
 sdd/
+
+# Superpowers working docs (brainstorming specs, implementation plans, design
+# docs) — kept local, out of the repo. See CLAUDE.md → Workflow conventions.
+.claude/superpowers/

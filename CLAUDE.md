@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Always ask before pushing to the remote.** Never run `git push` (branches or tags) without explicit confirmation in this conversation — even when changes are committed, CI-green, and tests pass. Committing locally is fine.
 - **Changing a TypeORM entity? Generate and commit a migration in the same change.** Dev uses `synchronize`, so entity edits work locally without one — but CI fails if a migration is missing (see [Database & migrations](#database--migrations)).
 - **Run scripts from the repo root.** Turborepo fans tasks out to the workspaces and builds `@repo/types` first; running an app script in isolation can use stale shared types.
+- **Superpowers working docs live in `.claude/superpowers/`, never in the repo tree.** Any brainstorming spec, implementation plan, or design doc — whether or not the superpowers plugin is in use, and regardless of a skill's own default path — goes under `.claude/superpowers/` (`.claude/superpowers/plans/`, `.claude/superpowers/specs/`). This directory is **gitignored**, so these working artifacts stay local and out of commits/PRs. Do not create a repo-root `docs/superpowers/` (or similar) for them.
 
 ### Issue → worktree → PR workflow
 
