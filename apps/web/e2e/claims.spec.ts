@@ -1,21 +1,26 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Auto Claims Portal', () => {
+  // The signed-in user (the seeded demo account) shares "Alice Nguyen" with a
+  // policyholder, and the layout header now renders that name — so scope
+  // content assertions to <main> to avoid colliding with the header.
   test('home page lists policyholders', async ({ page }) => {
     await page.goto('/');
+    const main = page.getByRole('main');
 
-    await expect(page.getByRole('heading', { name: 'Policyholders' })).toBeVisible();
-    await expect(page.getByText('Alice Nguyen')).toBeVisible();
-    await expect(page.getByText('Bob Smith')).toBeVisible();
-    await expect(page.getByText('1 claim', { exact: true })).toBeVisible();
-    await expect(page.getByText('0 claims')).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Policyholders' })).toBeVisible();
+    await expect(main.getByText('Alice Nguyen')).toBeVisible();
+    await expect(main.getByText('Bob Smith')).toBeVisible();
+    await expect(main.getByText('1 claim', { exact: true })).toBeVisible();
+    await expect(main.getByText('0 claims')).toBeVisible();
   });
 
   test('navigates from a policyholder to a claim detail', async ({ page }) => {
     await page.goto('/');
+    const main = page.getByRole('main');
 
     // Home -> user detail.
-    await page.getByText('Alice Nguyen').click();
+    await main.getByText('Alice Nguyen').click();
     await expect(page.getByRole('heading', { name: 'Alice Nguyen' })).toBeVisible();
     await expect(page.getByText('alice@example.com')).toBeVisible();
 

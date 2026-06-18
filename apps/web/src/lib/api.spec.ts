@@ -1,5 +1,7 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/msw/server';
 import { API_BASE } from '@/test/msw/handlers';
 import {
@@ -12,6 +14,16 @@ import {
   usersWithCount,
 } from '@/test/fixtures';
 import { getClaim, getUser, getUserClaims, getUsers } from './api';
+
+// next/navigation's redirect throws NEXT_REDIRECT in real Next so control flow
+// stops at the call site. Mirror that here (throw a sentinel string) so the mock
+// matches production semantics — apiGet must not fall through to res.json() after
+// a 401. (Factory is hoisted, so the sentinel is defined inline.)
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(() => {
+    throw 'NEXT_REDIRECT';
+  }),
+}));
 
 describe('getUsers', () => {
   it('returns a page of users with claim counts and pagination meta', async () => {
@@ -77,6 +89,21 @@ describe('apiGet error handling', () => {
     );
 
     await expect(getUsers()).rejects.toThrow('API request failed: 500 Internal Server Error');
+  });
+
+  it('redirects to /login on a 401 (expired/invalid token) instead of throwing', async () => {
+    // A present-but-stale cookie: middleware lets it through, the API returns 401.
+    vi.mocked(cookies).mockResolvedValueOnce({
+      get: () => ({ value: 'stale-token' }),
+      set: () => {},
+      delete: () => {},
+    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    server.use(http.get(`${API_BASE}/users`, () => new HttpResponse(null, { status: 401 })));
+
+    // redirect() interrupts control flow via a throw; swallow the sentinel and
+    // assert the call (in production NEXT_REDIRECT is caught by Next, not us).
+    await expect(getUsers()).rejects.toBe('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/login');
   });
 
   it('sends an Accept: application/json header', async () => {

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
+import { getCurrentUser } from '@/lib/auth';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
   description: 'View and manage auto insurance claims by policyholder',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const user = await getCurrentUser();
   return (
     <html lang="en">
       <body className="min-h-screen bg-muted/30 antialiased">
@@ -20,6 +22,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </span>
               Auto Claims Portal
             </Link>
+            {user ? (
+              <div className="ml-auto flex items-center gap-3 text-sm">
+                <span className="text-muted-foreground">
+                  {user.firstName} {user.lastName}
+                </span>
+                <form action="/logout" method="post">
+                  <button type="submit" className="font-medium underline">
+                    Sign out
+                  </button>
+                </form>
+              </div>
+            ) : null}
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>

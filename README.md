@@ -85,6 +85,9 @@ pnpm install
 cp apps/api/.env.example apps/api/.env     # already present; edit if needed
 ```
 
+`JWT_SECRET` is **required** — set it to a long random string in `apps/api/.env` or the API
+won't boot (see [Authentication](#authentication)).
+
 ### 3. Seed sample data
 
 Loads 50 policyholders with vehicles, policies, and ~150 claims (documents + notes):
@@ -170,6 +173,9 @@ Base URL: `http://localhost:4000/api`
 | `GET`   | `/claims/:id`         | Full claim detail (user, vehicle, policy, docs, notes)  |
 | `POST`  | `/claims`             | File a new claim                                        |
 | `PATCH` | `/claims/:id/status`  | Update a claim's status (+ approved amount / adjuster)  |
+| `POST`  | `/auth/register`      | Register a new user, returns a JWT                       |
+| `POST`  | `/auth/login`         | Log in with credentials, returns a JWT                  |
+| `GET`   | `/auth/me`            | Current user (requires a bearer token)                  |
 
 Requests are validated with `class-validator`; unknown claims return `404`, malformed
 ids/filters return `400`.
@@ -199,6 +205,31 @@ needed to render page controls:
 ```
 
 `page` defaults to `1` and `limit` to `12` (max `100`); invalid values return `400`.
+
+## Authentication
+
+The API uses **bearer-token JWT auth**. `POST /api/auth/register` and `POST /api/auth/login`
+return a signed JWT; pass it as `Authorization: Bearer <token>` to call protected routes such
+as `GET /api/auth/me`.
+
+Two env vars (in `apps/api/.env`) configure signing:
+
+| Variable         | Required | Default | Description                                    |
+| ---------------- | -------- | ------- | ---------------------------------------------- |
+| `JWT_SECRET`     | yes      | —       | Secret used to sign tokens; the API fails to boot without it. Use a long random string. |
+| `JWT_EXPIRES_IN` | no       | `1d`    | Token lifetime (e.g. `1d`, `12h`, `3600s`)     |
+
+`pnpm db:seed` creates a demo login you can use immediately:
+
+| Username | Password       |
+| -------- | -------------- |
+| `demo`   | `Password123!` |
+
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"demo","password":"Password123!"}'
+```
 
 ## Frontend
 

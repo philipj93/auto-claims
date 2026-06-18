@@ -183,4 +183,68 @@ describe('UsersService', () => {
       expect(claims.find).not.toHaveBeenCalled();
     });
   });
+
+  describe('findByUsername', () => {
+    it('selects the password hash and returns the user', async () => {
+      const ada = makeUser({ username: 'ada' });
+      users.findOne!.mockResolvedValue(ada);
+
+      const result = await service.findByUsername('ada');
+
+      expect(users.findOne).toHaveBeenCalledWith({
+        where: { username: 'ada' },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          passwordHash: true,
+        },
+      });
+      expect(result).toBe(ada);
+    });
+
+    it('returns null when no user matches', async () => {
+      users.findOne!.mockResolvedValue(null);
+      expect(await service.findByUsername('nobody')).toBeNull();
+    });
+  });
+
+  describe('existsByUsernameOrEmail', () => {
+    it('returns true when a user with that username or email exists', async () => {
+      users.findOne!.mockResolvedValue(makeUser());
+      expect(await service.existsByUsernameOrEmail('ada', 'ada@example.com')).toBe(true);
+    });
+
+    it('returns false when none exists', async () => {
+      users.findOne!.mockResolvedValue(null);
+      expect(await service.existsByUsernameOrEmail('ada', 'ada@example.com')).toBe(false);
+    });
+  });
+
+  describe('createUser', () => {
+    it('persists a new user from the given fields', async () => {
+      const created = makeUser();
+      users.save!.mockResolvedValue(created);
+
+      const result = await service.createUser({
+        username: 'ada',
+        email: 'ada@example.com',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        passwordHash: 'hash',
+      });
+
+      expect(users.create).toHaveBeenCalledWith({
+        username: 'ada',
+        email: 'ada@example.com',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        passwordHash: 'hash',
+      });
+      expect(users.save).toHaveBeenCalled();
+      expect(result).toBe(created);
+    });
+  });
 });
