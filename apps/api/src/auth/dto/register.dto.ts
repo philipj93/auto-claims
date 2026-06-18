@@ -19,6 +19,7 @@ export class RegisterDto implements CreateUserInput {
     minNumbers: 1,
     minSymbols: 1,
   })
+  @MaxLength(72)
   password: string;
 
   @IsString()

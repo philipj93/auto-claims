@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import type {
   AuthResponse,
   AuthUser,
@@ -33,7 +34,11 @@ async function apiGet<T>(path: string): Promise<T> {
     return null as T;
   }
   if (res.status === 401) {
-    throw new UnauthorizedError();
+    // The cookie is present but the token is expired/invalid (the daily case once
+    // JWT_EXPIRES_IN lapses). apiGet only runs server-side from RSC data fetches, so
+    // redirect to /login rather than throwing an uncaught 500. redirect() throws an
+    // internal NEXT_REDIRECT control-flow signal that must propagate uncaught.
+    redirect('/login');
   }
   if (!res.ok) {
     throw new Error(`API request failed: ${res.status} ${res.statusText}`);
