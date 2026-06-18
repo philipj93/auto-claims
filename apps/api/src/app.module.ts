@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDataSourceOptions } from './database/typeorm.config';
 import { UsersModule } from './users/users.module';
 import { ClaimsModule } from './claims/claims.module';
+import { AuthModule } from './auth/auth.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -14,6 +15,7 @@ import { HealthController } from './health.controller';
     }),
     UsersModule,
     ClaimsModule,
+    AuthModule,
   ],
   controllers: [HealthController],
 })
