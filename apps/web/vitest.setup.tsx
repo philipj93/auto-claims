@@ -31,3 +31,14 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
+
+// --- next/headers ------------------------------------------------------------
+// next/headers — server-only cookie store. Default to "no token" so apiGet
+// omits the Authorization header and MSW intercepts the same URLs as before.
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({
+    get: () => undefined,
+    set: () => {},
+    delete: () => {},
+  })),
+}));
