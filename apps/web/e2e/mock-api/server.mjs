@@ -97,23 +97,52 @@ const usersWithCount = [
   { ...alice, claimCount: 1 },
   { ...bob, claimCount: 0 },
 ];
+// The list endpoint returns the Paginated envelope ({ data, meta }), matching
+// the real API — the home page reads `meta` to render its pager.
+const usersPage = {
+  data: usersWithCount,
+  meta: {
+    page: 1,
+    limit: 12,
+    total: usersWithCount.length,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  },
+};
 const aliceClaims = [{ ...claim, documents: undefined, notes: undefined }];
+
+// The authenticated user surfaced by the auth endpoints. Deterministic: the
+// mock ignores credentials and tokens and always resolves to this account.
+const authUser = {
+  id: alice.id,
+  username: 'demo',
+  email: alice.email,
+  firstName: alice.firstName,
+  lastName: alice.lastName,
+};
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(body === undefined ? '' : JSON.stringify(body));
 }
 
+// Routes are matched by method + pathname. Each handler returns a body (200) or
+// `null` (404). Auth endpoints ignore the request body/token by design.
 const routes = [
-  [/^\/api\/users$/, () => usersWithCount],
-  [/^\/api\/users\/([^/]+)$/, (m) => (m[1] === alice.id ? alice : null)],
-  [/^\/api\/users\/([^/]+)\/claims$/, (m) => (m[1] === alice.id ? aliceClaims : [])],
-  [/^\/api\/claims\/([^/]+)$/, (m) => (m[1] === claim.id ? claim : null)],
+  ['GET', /^\/api\/users$/, () => usersPage],
+  ['GET', /^\/api\/users\/([^/]+)$/, (m) => (m[1] === alice.id ? alice : null)],
+  ['GET', /^\/api\/users\/([^/]+)\/claims$/, (m) => (m[1] === alice.id ? aliceClaims : [])],
+  ['GET', /^\/api\/claims\/([^/]+)$/, (m) => (m[1] === claim.id ? claim : null)],
+  ['POST', /^\/api\/auth\/login$/, () => ({ accessToken: 'e2e-test-token', user: authUser })],
+  ['POST', /^\/api\/auth\/register$/, () => ({ accessToken: 'e2e-test-token', user: authUser })],
+  ['GET', /^\/api\/auth\/me$/, () => authUser],
 ];
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
-  for (const [pattern, handler] of routes) {
+  for (const [method, pattern, handler] of routes) {
+    if (req.method !== method) continue;
     const match = url.pathname.match(pattern);
     if (match) {
       const body = handler(match);

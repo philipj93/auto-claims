@@ -23,7 +23,14 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${WEB_PORT}`,
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    {
+      name: 'chromium',
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: 'e2e/.auth/user.json' },
+    },
+  ],
   webServer: [
     {
       command: `node e2e/mock-api/server.mjs`,
