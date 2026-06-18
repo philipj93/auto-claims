@@ -4,10 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Workflow conventions
 
+- **Track work as GitHub issues, then implement it in an issue-numbered worktree → PR.** Document each feature/bug as a GitHub issue first; the issue number prefixes the worktree, branch, and PR title (see [Issue → worktree → PR workflow](#issue--worktree--pr-workflow)).
 - **Develop new features in a git worktree, not a plain branch.** Create an isolated worktree per feature/task (kept under `.claude/worktrees/`) instead of switching branches in the main checkout — keeps parallel work isolated and the main checkout clean.
 - **Always ask before pushing to the remote.** Never run `git push` (branches or tags) without explicit confirmation in this conversation — even when changes are committed, CI-green, and tests pass. Committing locally is fine.
 - **Changing a TypeORM entity? Generate and commit a migration in the same change.** Dev uses `synchronize`, so entity edits work locally without one — but CI fails if a migration is missing (see [Database & migrations](#database--migrations)).
 - **Run scripts from the repo root.** Turborepo fans tasks out to the workspaces and builds `@repo/types` first; running an app script in isolation can use stale shared types.
+
+### Issue → worktree → PR workflow
+
+Work is tracked as GitHub issues (Issues are enabled on the repo; no Jira). Each feature request or bug is documented as an issue, then implemented on an isolated branch that traces back to it. **The issue number is the leading prefix** for both the worktree/branch name and the PR title, so any worktree, branch, or PR is identifiable at a glance.
+
+| Artifact              | Convention                                                                  | Example (issue #42)                                                           |
+| --------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Issue                 | Created from a template in `.github/ISSUE_TEMPLATE/` (`feat:`/`fix:` title) | `#42 feat: fuzzy search on claims list`                                       |
+| Worktree dir + branch | `<issue#>-<kebab-slug>`, worktree under `.claude/worktrees/`                | `.claude/worktrees/42-fuzzy-claims-search` on branch `42-fuzzy-claims-search` |
+| PR title              | `[#<issue#>] <type>: <summary>` (`<type>` = conventional-commit type)       | `[#42] feat: fuzzy search on claims list`                                     |
+| PR body               | Includes a closing keyword so merge auto-closes the issue                   | `Closes #42`                                                                  |
+
+```bash
+# 1. Document the work as an issue (prints the issue number/URL)
+gh issue create --title "feat: fuzzy search on claims list" --body "..." --label enhancement
+
+# 2. Spin up an issue-numbered worktree (from repo root)
+git worktree add .claude/worktrees/42-fuzzy-claims-search -b 42-fuzzy-claims-search
+
+# 3. Implement, then raise the PR — title prefixed with [#42], body closes the issue
+gh pr create --base main \
+  --title "[#42] feat: fuzzy search on claims list" \
+  --body "Closes #42
+
+## What changed
+..."
+```
+
+`.github/pull_request_template.md` pre-fills the `Closes #` line and a checklist enforcing the prefixes. Pushing the branch / opening the PR still requires explicit confirmation (see the push rule above).
 
 ## Subagent model selection
 
@@ -22,13 +52,13 @@ This overrides the generic "use the cheapest model that works" heuristic — do 
 
 pnpm + Turborepo monorepo (`auto-claims-monorepo`) — an auto insurance claims portal for browsing claims by policyholder.
 
-| Workspace | Package | Stack |
-| --- | --- | --- |
-| `apps/api` | `@repo/api` | NestJS + TypeORM over PostgreSQL 17 (REST, base path `/api`, port `4000`) |
-| `apps/web` | `web` | Next.js (App Router, RSC) + Tailwind v4 + shadcn/ui (port `3000`) |
-| `packages/types` | `@repo/types` | Shared domain enums + types (`ClaimStatus`, `ClaimType`, `FaultDetermination`, `PolicyStatus`, `DocumentType`, `CreateClaimInput`, `Paginated`, …) |
-| `packages/eslint-config` | `@repo/eslint-config` | Shared flat ESLint presets (`base`, `nest`, `next`) |
-| `packages/typescript-config` | `@repo/typescript-config` | Shared `tsconfig` presets (`base`, `nestjs`, `nextjs`, `library`) |
+| Workspace                    | Package                   | Stack                                                                                                                                              |
+| ---------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`                   | `@repo/api`               | NestJS + TypeORM over PostgreSQL 17 (REST, base path `/api`, port `4000`)                                                                          |
+| `apps/web`                   | `web`                     | Next.js (App Router, RSC) + Tailwind v4 + shadcn/ui (port `3000`)                                                                                  |
+| `packages/types`             | `@repo/types`             | Shared domain enums + types (`ClaimStatus`, `ClaimType`, `FaultDetermination`, `PolicyStatus`, `DocumentType`, `CreateClaimInput`, `Paginated`, …) |
+| `packages/eslint-config`     | `@repo/eslint-config`     | Shared flat ESLint presets (`base`, `nest`, `next`)                                                                                                |
+| `packages/typescript-config` | `@repo/typescript-config` | Shared `tsconfig` presets (`base`, `nestjs`, `nextjs`, `library`)                                                                                  |
 
 `@repo/types` is the contract between API and web — both import its enums/types, so a domain change lives in one place and should start there. The enums double as TS types and TypeORM `@Column({ type: 'enum', enum: ... })` definitions. Turbo's `dependsOn: ["^build"]` guarantees `@repo/types` builds before either app.
 
@@ -99,10 +129,10 @@ Test layers: **service unit** (`*.service.spec.ts`, mocked repos) · **controlle
 
 Schema is defined by the TypeORM entities in `apps/api/src/entities`; how it reaches the DB depends on `DB_SYNCHRONIZE`:
 
-| Environment | `DB_SYNCHRONIZE` | Schema applied by |
-| --- | --- | --- |
-| Local dev | `true` | auto-sync from entities on startup |
-| Builds / prod / CI | `false` | committed migrations via `migration:run` |
+| Environment        | `DB_SYNCHRONIZE` | Schema applied by                        |
+| ------------------ | ---------------- | ---------------------------------------- |
+| Local dev          | `true`           | auto-sync from entities on startup       |
+| Builds / prod / CI | `false`          | committed migrations via `migration:run` |
 
 > ⚠️ `synchronize` **can DROP columns/tables** to match entities — only safe locally because data is disposable (`pnpm db:seed`). Never enable it against data you care about.
 
