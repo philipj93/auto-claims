@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ACCESS_TOKEN_COOKIE } from '@/lib/auth';
-import { loginRequest, UnauthorizedError } from '@/lib/api';
+import { loginRequest, RateLimitError, UnauthorizedError } from '@/lib/api';
 
 export type AuthFormState = { error: string | null };
 
@@ -17,6 +17,8 @@ export async function login(_prev: AuthFormState, formData: FormData): Promise<A
     token = accessToken;
   } catch (err) {
     if (err instanceof UnauthorizedError) return { error: 'Invalid username or password' };
+    if (err instanceof RateLimitError)
+      return { error: 'Too many attempts. Please wait a moment and try again.' };
     return { error: 'Something went wrong. Please try again.' };
   }
 

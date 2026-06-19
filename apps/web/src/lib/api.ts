@@ -58,6 +58,14 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/** Thrown by `loginRequest`/`registerRequest` when the API rate-limits (429). */
+export class RateLimitError extends Error {
+  constructor() {
+    super('Too many requests');
+    this.name = 'RateLimitError';
+  }
+}
+
 export function getUsers(page = 1, limit = USERS_PAGE_SIZE): Promise<Paginated<UserWithCount>> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   return apiGet<Paginated<UserWithCount>>(`/users?${params}`);
@@ -83,6 +91,7 @@ export async function loginRequest(input: LoginInput): Promise<AuthResponse> {
     body: JSON.stringify(input),
   });
   if (res.status === 401) throw new UnauthorizedError();
+  if (res.status === 429) throw new RateLimitError();
   if (!res.ok) throw new Error(`Login failed: ${res.status}`);
   return res.json() as Promise<AuthResponse>;
 }
@@ -94,6 +103,7 @@ export async function registerRequest(input: CreateUserInput): Promise<AuthRespo
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
+  if (res.status === 429) throw new RateLimitError();
   if (!res.ok) {
     const message =
       res.status === 409

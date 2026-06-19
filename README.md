@@ -22,6 +22,7 @@ A full-stack system for viewing auto insurance claims by policyholder.
 - **Node.js** (LTS) via [nvm](https://github.com/nvm-sh/nvm) — run `nvm use` in the repo (see `.nvmrc`)
 - **pnpm** — `corepack enable`
 - **PostgreSQL 17** running locally
+- **Redis 7** running locally (powers auth rate limiting)
 
 ## Data model
 
@@ -78,7 +79,17 @@ psql -d postgres -c "ALTER DATABASE claims_db OWNER TO claims_user;"
 > would need a migration that isn't committed (see
 > [Database schema & migrations](#database-schema--migrations)).
 
-### 2. Install & configure
+### 2. Redis
+
+Rate limiting uses Redis. Run one locally:
+
+```bash
+docker run -p 6379:6379 redis:7      # or: brew services start redis
+```
+
+The API reads `REDIS_URL` (default `redis://localhost:6379`).
+
+### 3. Install & configure
 
 ```bash
 pnpm install
@@ -88,7 +99,7 @@ cp apps/api/.env.example apps/api/.env     # already present; edit if needed
 `JWT_SECRET` is **required** — set it to a long random string in `apps/api/.env` or the API
 won't boot (see [Authentication](#authentication)).
 
-### 3. Seed sample data
+### 4. Seed sample data
 
 Loads 50 policyholders with vehicles, policies, and ~150 claims (documents + notes):
 
@@ -96,7 +107,7 @@ Loads 50 policyholders with vehicles, policies, and ~150 claims (documents + not
 pnpm db:seed
 ```
 
-### 4. Run everything
+### 5. Run everything
 
 ```bash
 pnpm dev

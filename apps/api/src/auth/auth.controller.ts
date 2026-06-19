@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import type { AuthResponse, AuthUser } from '@repo/types';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,6 +17,7 @@ export class AuthController {
   ) {}
 
   /** POST /api/auth/register — create an account and return a bearer token. */
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Public()
   @Post('register')
   register(@Body() dto: RegisterDto): Promise<AuthResponse> {
@@ -23,6 +25,7 @@ export class AuthController {
   }
 
   /** POST /api/auth/login — exchange credentials for a bearer token. */
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('login')
