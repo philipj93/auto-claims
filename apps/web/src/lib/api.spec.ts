@@ -13,7 +13,7 @@ import {
   paginated,
   usersWithCount,
 } from '@/test/fixtures';
-import { getClaim, getUser, getUserClaims, getUsers } from './api';
+import { getClaim, getUser, getUserClaims, getUsers, loginRequest, RateLimitError } from './api';
 
 // next/navigation's redirect throws NEXT_REDIRECT in real Next so control flow
 // stops at the call site. Mirror that here (throw a sentinel string) so the mock
@@ -117,5 +117,15 @@ describe('apiGet error handling', () => {
 
     await getUsers();
     expect(seenAccept).toBe('application/json');
+  });
+});
+
+describe('loginRequest', () => {
+  it('throws RateLimitError on a 429', async () => {
+    server.use(http.post(`${API_BASE}/auth/login`, () => new HttpResponse(null, { status: 429 })));
+
+    await expect(loginRequest({ username: 'ada', password: 'x' })).rejects.toBeInstanceOf(
+      RateLimitError,
+    );
   });
 });

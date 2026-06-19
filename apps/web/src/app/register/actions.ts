@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ACCESS_TOKEN_COOKIE } from '@/lib/auth';
-import { registerRequest } from '@/lib/api';
+import { registerRequest, RateLimitError } from '@/lib/api';
 import type { AuthFormState } from '../login/actions';
 
 export async function register(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -20,6 +20,8 @@ export async function register(_prev: AuthFormState, formData: FormData): Promis
     const { accessToken } = await registerRequest(input);
     token = accessToken;
   } catch (err) {
+    if (err instanceof RateLimitError)
+      return { error: 'Too many attempts. Please wait a moment and try again.' };
     return { error: err instanceof Error ? err.message : 'Registration failed' };
   }
 
