@@ -15,10 +15,7 @@ describe('USER_SEARCH_EXPR', () => {
   const migrationFile = readdirSync(migrationsDir).find((f) =>
     f.endsWith('AddPolicyholderSearchIndex.ts'),
   );
-  const migrationText = readFileSync(
-    join(migrationsDir, migrationFile!),
-    'utf8',
-  );
+  const migrationText = readFileSync(join(migrationsDir, migrationFile!), 'utf8');
 
   it('locates the AddPolicyholderSearchIndex migration', () => {
     expect(migrationFile).toBeDefined();
