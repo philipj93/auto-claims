@@ -9,6 +9,7 @@ import request from 'supertest';
 import { ClaimStatus, ClaimType } from '@repo/types';
 
 import { HealthController } from '../src/health.controller';
+import { RedisService } from '../src/redis/redis.module';
 import { UsersController } from '../src/users/users.controller';
 import { UsersService } from '../src/users/users.service';
 import { ClaimsController } from '../src/claims/claims.controller';
@@ -77,6 +78,7 @@ describe('API (e2e)', () => {
         { provide: getRepositoryToken(Vehicle), useValue: vehicles },
         { provide: getRepositoryToken(Claim), useValue: claims },
         { provide: DataSource, useValue: dataSource },
+        { provide: RedisService, useValue: { ping: async () => 'PONG' } },
       ],
     }).compile();
 
