@@ -13,6 +13,7 @@
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "check-types": "turbo run check-types",
+    "test": "turbo run test",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean && rm -rf node_modules"
