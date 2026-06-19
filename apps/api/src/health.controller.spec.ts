@@ -25,4 +25,11 @@ describe('HealthController', () => {
     expect(result.status).toBe('degraded');
     expect(result.redis).toBe('down');
   });
+
+  it('reports degraded when Redis replies with an unexpected value', async () => {
+    const result = await new HealthController(redisStub(async () => 'WEIRD')).check();
+
+    expect(result.status).toBe('degraded');
+    expect(result.redis).toBe('degraded');
+  });
 });
