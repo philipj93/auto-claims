@@ -11,12 +11,14 @@ import { ClaimsModule } from './claims/claims.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
 import { REDIS_CLIENT } from './redis/redis.constants';
+import { CacheModule } from './cache/cache.module';
 import { HealthController } from './health.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     RedisModule,
+    CacheModule,
     TypeOrmModule.forRootAsync({
       useFactory: () => buildDataSourceOptions(),
     }),

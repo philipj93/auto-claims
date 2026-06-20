@@ -10,6 +10,14 @@ import { ClaimNote } from '../entities/claim-note.entity';
 import { Vehicle } from '../entities/vehicle.entity';
 import { createMockRepository, type MockRepository } from '../../test/utils/mock-repository';
 import { CLAIM_ID, USER_ID, VEHICLE_ID, makeClaim, makeVehicle } from '../../test/utils/fixtures';
+import { CacheService } from '../cache/cache.service';
+import {
+  CLAIMS_LIST_NS,
+  USERS_LIST_NS,
+  claimsListKey,
+  everythingIn,
+  LIST_TTL_SECONDS,
+} from '../cache/cache.keys';
 
 describe('ClaimsService', () => {
   let service: ClaimsService;
@@ -21,10 +29,23 @@ describe('ClaimsService', () => {
     create: ReturnType<typeof vi.fn>;
   };
   let dataSource: { transaction: ReturnType<typeof vi.fn> };
+  let cache: {
+    wrap: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
+    delByPattern: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     claims = createMockRepository<Claim>();
     vehicles = createMockRepository<Vehicle>();
+
+    // Pass-through cache: wrap() just runs the factory, so existing repo-call
+    // assertions hold; del/delByPattern are spies for invalidation assertions.
+    cache = {
+      wrap: vi.fn((_key: string, _ttl: number, factory: () => Promise<unknown>) => factory()),
+      del: vi.fn(),
+      delByPattern: vi.fn(),
+    };
 
     // Mock EntityManager used inside dataSource.transaction callbacks.
     manager = {
@@ -46,6 +67,7 @@ describe('ClaimsService', () => {
         { provide: getRepositoryToken(Claim), useValue: claims },
         { provide: getRepositoryToken(Vehicle), useValue: vehicles },
         { provide: DataSource, useValue: dataSource },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 
@@ -84,6 +106,18 @@ describe('ClaimsService', () => {
             type: ClaimType.THEFT,
           },
         }),
+      );
+    });
+
+    it('reads through the cache keyed by the query filters', async () => {
+      claims.find!.mockResolvedValue([]);
+
+      await service.findAll({ status: ClaimStatus.PAID });
+
+      expect(cache.wrap).toHaveBeenCalledWith(
+        claimsListKey({ status: ClaimStatus.PAID }),
+        LIST_TTL_SECONDS,
+        expect.any(Function),
       );
     });
   });
@@ -183,6 +217,17 @@ describe('ClaimsService', () => {
         injuryReported: true,
       });
     });
+
+    it('invalidates the claims and users list caches', async () => {
+      vehicles.findOne!.mockResolvedValue(makeVehicle());
+      claims.save!.mockResolvedValue(makeClaim());
+      claims.findOne!.mockResolvedValue(makeClaim());
+
+      await service.create({ ...baseDto });
+
+      expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(CLAIMS_LIST_NS));
+      expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(USERS_LIST_NS));
+    });
   });
 
   describe('updateStatus', () => {
@@ -254,6 +299,29 @@ describe('ClaimsService', () => {
         NotFoundException,
       );
       expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('invalidates only the claims list cache after a successful update', async () => {
+      const claim = makeClaim();
+      manager.findOne.mockResolvedValue(claim);
+      manager.save.mockResolvedValue(claim);
+      claims.findOne!.mockResolvedValue(claim);
+
+      await service.updateStatus(CLAIM_ID, { status: ClaimStatus.UNDER_REVIEW });
+
+      // A status change restages claims lists, but a user's claimCount (total
+      // claims) is unchanged — so the users lists must NOT be busted here.
+      expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(CLAIMS_LIST_NS));
+      expect(cache.delByPattern).not.toHaveBeenCalledWith(everythingIn(USERS_LIST_NS));
+    });
+
+    it('does not invalidate the cache when the claim does not exist', async () => {
+      manager.findOne.mockResolvedValue(null);
+
+      await expect(service.updateStatus(CLAIM_ID, { status: ClaimStatus.PAID })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(cache.delByPattern).not.toHaveBeenCalled();
     });
   });
 

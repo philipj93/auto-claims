@@ -8,6 +8,14 @@ import { Vehicle } from '../entities/vehicle.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimStatusDto } from './dto/update-claim-status.dto';
 import { QueryClaimsDto } from './dto/query-claims.dto';
+import { CacheService } from '../cache/cache.service';
+import {
+  CLAIMS_LIST_NS,
+  USERS_LIST_NS,
+  claimsListKey,
+  everythingIn,
+  LIST_TTL_SECONDS,
+} from '../cache/cache.keys';
 
 @Injectable()
 export class ClaimsService {
@@ -17,6 +25,7 @@ export class ClaimsService {
     @InjectRepository(Vehicle)
     private readonly vehicles: Repository<Vehicle>,
     private readonly dataSource: DataSource,
+    private readonly cache: CacheService,
   ) {}
 
   async findAll(query: QueryClaimsDto): Promise<Claim[]> {
@@ -25,11 +34,27 @@ export class ClaimsService {
     if (query.status) where.status = query.status;
     if (query.type) where.type = query.type;
 
-    return this.claims.find({
-      where,
-      relations: { user: true, vehicle: true },
-      order: { reportedDate: 'DESC' },
-    });
+    return this.cache.wrap(claimsListKey(query), LIST_TTL_SECONDS, () =>
+      this.claims.find({
+        where,
+        relations: { user: true, vehicle: true },
+        order: { reportedDate: 'DESC' },
+      }),
+    );
+  }
+
+  /**
+   * Bust the cached lists a claim write stales. The claims lists are always
+   * affected. Pass `includeUsers` only when the write changes a user's
+   * claimCount (i.e. claim creation) — a status change leaves the count intact,
+   * so it must not needlessly bust the users lists.
+   */
+  private async invalidateClaimLists(includeUsers: boolean): Promise<void> {
+    const patterns = [everythingIn(CLAIMS_LIST_NS)];
+    if (includeUsers) {
+      patterns.push(everythingIn(USERS_LIST_NS));
+    }
+    await Promise.all(patterns.map((pattern) => this.cache.delByPattern(pattern)));
   }
 
   async findOne(id: string): Promise<Claim> {
@@ -72,6 +97,7 @@ export class ClaimsService {
     });
 
     const saved = await this.claims.save(claim);
+    await this.invalidateClaimLists(true); // new claim → users' claimCount changes too
     return this.findOne(saved.id);
   }
 
@@ -111,6 +137,7 @@ export class ClaimsService {
       await manager.save(note);
     });
 
+    await this.invalidateClaimLists(false); // status change doesn't alter any claimCount
     return this.findOne(id);
   }
 

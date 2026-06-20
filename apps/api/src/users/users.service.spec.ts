@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -13,21 +13,34 @@ import {
 import { USER_ID, makeClaim, makeUser } from '../../test/utils/fixtures';
 import { PaginationQueryDto } from '../common/pagination.dto';
 import { FindUsersQueryDto } from './dto/find-users-query.dto';
+import { CacheService } from '../cache/cache.service';
+import { USERS_LIST_NS, usersListKey, everythingIn, LIST_TTL_SECONDS } from '../cache/cache.keys';
 
 describe('UsersService', () => {
   let service: UsersService;
   let users: MockRepository<User>;
   let claims: MockRepository<Claim>;
+  let cache: {
+    wrap: ReturnType<typeof vi.fn>;
+    delByPattern: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     users = createMockRepository<User>();
     claims = createMockRepository<Claim>();
+
+    // Pass-through cache so existing query assertions hold; delByPattern is a spy.
+    cache = {
+      wrap: vi.fn((_key: string, _ttl: number, factory: () => Promise<unknown>) => factory()),
+      delByPattern: vi.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: getRepositoryToken(User), useValue: users },
         { provide: getRepositoryToken(Claim), useValue: claims },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 
@@ -88,6 +101,18 @@ describe('UsersService', () => {
 
       expect(result.data).toEqual([]);
       expect(claims.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('reads through the cache keyed by search + page window', async () => {
+      users.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(query);
+
+      expect(cache.wrap).toHaveBeenCalledWith(
+        usersListKey(query),
+        LIST_TTL_SECONDS,
+        expect.any(Function),
+      );
     });
   });
 
@@ -245,6 +270,20 @@ describe('UsersService', () => {
       });
       expect(users.save).toHaveBeenCalled();
       expect(result).toBe(created);
+    });
+
+    it('invalidates the users list cache so the new user appears', async () => {
+      users.save!.mockResolvedValue(makeUser());
+
+      await service.createUser({
+        username: 'ada',
+        email: 'ada@example.com',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        passwordHash: 'hash',
+      });
+
+      expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(USERS_LIST_NS));
     });
   });
 });
