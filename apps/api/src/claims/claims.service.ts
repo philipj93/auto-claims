@@ -8,6 +8,14 @@ import { Vehicle } from '../entities/vehicle.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimStatusDto } from './dto/update-claim-status.dto';
 import { QueryClaimsDto } from './dto/query-claims.dto';
+import { CacheService } from '../cache/cache.service';
+import {
+  CLAIMS_LIST_NS,
+  USERS_LIST_NS,
+  claimsListKey,
+  everythingIn,
+  LIST_TTL_SECONDS,
+} from '../cache/cache.keys';
 
 @Injectable()
 export class ClaimsService {
@@ -17,6 +25,7 @@ export class ClaimsService {
     @InjectRepository(Vehicle)
     private readonly vehicles: Repository<Vehicle>,
     private readonly dataSource: DataSource,
+    private readonly cache: CacheService,
   ) {}
 
   async findAll(query: QueryClaimsDto): Promise<Claim[]> {
@@ -25,11 +34,24 @@ export class ClaimsService {
     if (query.status) where.status = query.status;
     if (query.type) where.type = query.type;
 
-    return this.claims.find({
-      where,
-      relations: { user: true, vehicle: true },
-      order: { reportedDate: 'DESC' },
-    });
+    return this.cache.wrap(claimsListKey(query), LIST_TTL_SECONDS, () =>
+      this.claims.find({
+        where,
+        relations: { user: true, vehicle: true },
+        order: { reportedDate: 'DESC' },
+      }),
+    );
+  }
+
+  /**
+   * Bust every cached list a claim write can stale: the claims lists, and the
+   * users lists (each user row carries a claimCount a write can change).
+   */
+  private async invalidateListCaches(): Promise<void> {
+    await Promise.all([
+      this.cache.delByPattern(everythingIn(CLAIMS_LIST_NS)),
+      this.cache.delByPattern(everythingIn(USERS_LIST_NS)),
+    ]);
   }
 
   async findOne(id: string): Promise<Claim> {
@@ -72,6 +94,7 @@ export class ClaimsService {
     });
 
     const saved = await this.claims.save(claim);
+    await this.invalidateListCaches();
     return this.findOne(saved.id);
   }
 
@@ -111,6 +134,7 @@ export class ClaimsService {
       await manager.save(note);
     });
 
+    await this.invalidateListCaches();
     return this.findOne(id);
   }
 

@@ -6,6 +6,8 @@ import { User } from '../entities/user.entity';
 import { Claim } from '../entities/claim.entity';
 import { FindUsersQueryDto } from './dto/find-users-query.dto';
 import { paginate } from '../common/pagination';
+import { CacheService } from '../cache/cache.service';
+import { USERS_LIST_NS, usersListKey, everythingIn, LIST_TTL_SECONDS } from '../cache/cache.keys';
 
 export type UserWithCount = User & { claimCount: number };
 
@@ -26,6 +28,7 @@ export class UsersService {
     private readonly users: Repository<User>,
     @InjectRepository(Claim)
     private readonly claims: Repository<Claim>,
+    private readonly cache: CacheService,
   ) {}
 
   /** word_similarity floor for fuzzy matches (pg_trgm); term goes first in word_similarity(term, text). */
@@ -38,6 +41,10 @@ export class UsersService {
   );
 
   async findAll(query: FindUsersQueryDto): Promise<Paginated<UserWithCount>> {
+    return this.cache.wrap(usersListKey(query), LIST_TTL_SECONDS, () => this.loadAll(query));
+  }
+
+  private async loadAll(query: FindUsersQueryDto): Promise<Paginated<UserWithCount>> {
     const search = query.search?.trim();
     if (search) {
       return this.search(search, query);
@@ -166,13 +173,16 @@ export class UsersService {
   }
 
   /** Persist a new user. The caller supplies an already-hashed password. */
-  createUser(data: {
+  async createUser(data: {
     username: string;
     email: string;
     firstName: string;
     lastName: string;
     passwordHash: string;
   }): Promise<User> {
-    return this.users.save(this.users.create(data));
+    const user = await this.users.save(this.users.create(data));
+    // A new user belongs in the lists; bust them so it shows up immediately.
+    await this.cache.delByPattern(everythingIn(USERS_LIST_NS));
+    return user;
   }
 }

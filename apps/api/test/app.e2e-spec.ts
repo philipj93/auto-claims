@@ -10,6 +10,7 @@ import { ClaimStatus, ClaimType } from '@repo/types';
 
 import { HealthController } from '../src/health.controller';
 import { RedisService } from '../src/redis/redis.module';
+import { CacheService } from '../src/cache/cache.service';
 import { UsersController } from '../src/users/users.controller';
 import { UsersService } from '../src/users/users.service';
 import { ClaimsController } from '../src/claims/claims.controller';
@@ -79,6 +80,17 @@ describe('API (e2e)', () => {
         { provide: getRepositoryToken(Claim), useValue: claims },
         { provide: DataSource, useValue: dataSource },
         { provide: RedisService, useValue: { ping: async () => 'PONG' } },
+        // Pass-through cache: read straight through to the repos, invalidation is a no-op.
+        {
+          provide: CacheService,
+          useValue: {
+            wrap: (_key: string, _ttl: number, factory: () => Promise<unknown>) => factory(),
+            get: async () => null,
+            set: async () => undefined,
+            del: async () => undefined,
+            delByPattern: async () => undefined,
+          },
+        },
       ],
     }).compile();
 
