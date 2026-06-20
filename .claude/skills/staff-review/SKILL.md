@@ -1,15 +1,12 @@
 ---
 name: staff-review
 description: >-
-  Review a pull request as an experienced staff-level engineer motivated by technical
-  excellence — with deep mastery of TypeScript, React, Node.js, NestJS, PostgreSQL,
-  Redis, and their architectural patterns — weighing scalability, maintainability, code
-  quality, and adherence to current standards; render a verdict (approve / request
-  changes), categorize bugs by risk
-  level, and post a formal GitHub review (REQUEST_CHANGES / APPROVE state + inline
-  comments). Use when the user wants an opinionated, decision-bearing PR review that
-  actually lands on GitHub, not just a summary. Invoke as `/staff-review` for the current
-  branch's PR or `/staff-review <number>` for a specific PR.
+  Review a pull request as a staff-level engineer with deep mastery of TypeScript, React,
+  Node.js, NestJS, PostgreSQL, and Redis — judging scalability, maintainability, code
+  quality, and standards — then render a verdict, categorize bugs by risk, and post a
+  formal GitHub review (REQUEST_CHANGES / APPROVE state plus inline comments). Use when the
+  user wants an opinionated, decision-bearing PR review that lands on GitHub, not just a
+  summary. Invoke as `/staff-review` (current branch's PR) or `/staff-review <number>`.
 ---
 
 # Staff-level PR review
@@ -83,6 +80,14 @@ with a different tool, or ask them to open the PR first). Do not invent a PR num
 Capture: PR `number`, `author.login`, `title`, `body` (read it — it states intent and may
 link an issue), and the repo `owner/name` (`gh repo view --json nameWithOwner`).
 
+**Determine the review event now, not at post time.** Compare the PR `author.login` to the
+authenticated user (`gh api user -q .login`). If they match, this is a self-review:
+GitHub returns 422 on `APPROVE` / `REQUEST_CHANGES` for your own PR, so the event will be
+`COMMENT` regardless of the verdict. Knowing this up front keeps the drafted verdict label
+(Step 6) honest instead of showing `REQUEST_CHANGES` and silently downgrading later. Still
+compute and state the _substantive_ verdict (e.g. "would be REQUEST_CHANGES; posting as
+COMMENT — self-review").
+
 ## Step 2 — Gather the diff and context
 
 ```bash
@@ -90,17 +95,36 @@ gh pr diff <number>                 # full unified diff (note line numbers for i
 gh pr diff <number> --name-only     # changed-file list
 ```
 
-Read the diff carefully and keep the hunk line numbers — you need them for inline
-comments. Read the repo's `CLAUDE.md` for the standards this change must meet. Read full
-files from the working tree when a hunk alone is not enough to judge correctness.
+Read the diff carefully and capture **new-file line numbers** — you need them for inline
+comments, and a wrong number makes the whole reviews-API call fail (see Step 7). Derive
+them from each hunk header `@@ -old,len +new,len @@`: the first added/context line in the
+hunk is `new`, incrementing by one per line you advance (skip removed `-` lines). For a
+precise, parse-free source, use the files endpoint, which also carries each file's `patch`:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<number>/files --paginate
+```
+
+Read the repo's `CLAUDE.md` for the standards this change must meet, and read full files
+from the working tree when a hunk alone is not enough to judge correctness.
 
 ## Step 3 — Fan out to specialist agents (parallel)
 
-Dispatch these `pr-review-toolkit` agents **in a single message** (parallel `Task` calls),
+**First, gate the fan-out to the diff's content.** Only dispatch agents that have something
+to analyze — spawning code reviewers on a docs-only or trivial diff just burns tokens and
+returns noise:
+
+- **No reviewable code** (only Markdown/docs, config, lockfiles, generated files, or a
+  pure rename/move): skip the fan-out entirely and review the diff yourself in Step 4.
+- **Small code diff** (roughly < ~50 changed lines, one concern): run only
+  `code-reviewer`, plus a conditional agent if clearly relevant.
+- **Substantial code diff**: run the full applicable set below.
+
+When you do fan out, dispatch the agents **in a single message** (parallel `Task` calls),
 each told to focus on this PR's diff. Match the subagent model to the main loop per
 `CLAUDE.md` → "Subagent model selection" (downgrade one step only for a trivial diff).
 
-Always:
+Applicable to any code diff:
 
 - `pr-review-toolkit:code-reviewer` — general quality + CLAUDE.md compliance + bugs
 - `pr-review-toolkit:silent-failure-hunter` — error handling / silent failures
@@ -185,19 +209,18 @@ the remote").
 
 ## Step 7 — Post the review
 
-GitHub forbids approving / requesting changes on **your own** PR (422). Check first:
+Use the `event` already decided in Step 1 (`COMMENT` for a self-review, otherwise
+`APPROVE` / `REQUEST_CHANGES` from the verdict). On a self-review, the body must state
+plainly that a formal verdict isn't possible on one's own PR — the findings and inline
+comments still post.
 
-```bash
-gh api user -q .login          # authenticated user
-# compare to the PR author.login from Step 1
-```
-
-If they match, downgrade the event to `COMMENT` and state plainly in the body that a
-formal verdict isn't possible on one's own PR (the findings/inline comments still post).
+Always supply a non-empty `body`: GitHub rejects `REQUEST_CHANGES` and `COMMENT` reviews
+that have neither a body nor comments, so the Step 6 summary is required, not optional.
 
 Post the review with state **and** inline comments in one call via the reviews API
-(`gh pr review` alone cannot attach inline comments). Build the payload as a file under
-`$CLAUDE_JOB_DIR/tmp` (or another temp dir), then:
+(`gh pr review` alone cannot attach inline comments). Address the PR by explicit
+`<owner>/<repo>` (from Step 1) so the call works regardless of the current directory.
+Build the payload as a file under `$CLAUDE_JOB_DIR/tmp` (or another temp dir), then:
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<number>/reviews -X POST --input <payload.json>
