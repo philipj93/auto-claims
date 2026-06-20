@@ -301,7 +301,7 @@ describe('ClaimsService', () => {
       expect(manager.save).not.toHaveBeenCalled();
     });
 
-    it('invalidates the claims and users list caches after a successful update', async () => {
+    it('invalidates only the claims list cache after a successful update', async () => {
       const claim = makeClaim();
       manager.findOne.mockResolvedValue(claim);
       manager.save.mockResolvedValue(claim);
@@ -309,8 +309,10 @@ describe('ClaimsService', () => {
 
       await service.updateStatus(CLAIM_ID, { status: ClaimStatus.UNDER_REVIEW });
 
+      // A status change restages claims lists, but a user's claimCount (total
+      // claims) is unchanged — so the users lists must NOT be busted here.
       expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(CLAIMS_LIST_NS));
-      expect(cache.delByPattern).toHaveBeenCalledWith(everythingIn(USERS_LIST_NS));
+      expect(cache.delByPattern).not.toHaveBeenCalledWith(everythingIn(USERS_LIST_NS));
     });
 
     it('does not invalidate the cache when the claim does not exist', async () => {

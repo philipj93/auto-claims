@@ -116,5 +116,41 @@ describe('CacheService', () => {
       expect(factory).toHaveBeenCalledOnce();
       expect(redis.set).toHaveBeenCalledWith('k', JSON.stringify(['fresh']), 'EX', 30);
     });
+
+    it('propagates a factory rejection instead of swallowing it', async () => {
+      redis.get.mockResolvedValue(null);
+      const factory = vi.fn().mockRejectedValue(new Error('db down'));
+
+      // A backing-store failure must surface to the caller, not degrade to a miss.
+      await expect(cache.wrap('k', 30, factory)).rejects.toThrow('db down');
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it('coalesces concurrent misses so the factory runs once (single-flight)', async () => {
+      redis.get.mockResolvedValue(null);
+      const factory = vi.fn().mockResolvedValue(['fresh']);
+
+      const [r1, r2] = await Promise.all([
+        cache.wrap('k', 30, factory),
+        cache.wrap('k', 30, factory),
+      ]);
+
+      expect(r1).toEqual(['fresh']);
+      expect(r2).toEqual(['fresh']);
+      expect(factory).toHaveBeenCalledOnce();
+    });
+
+    it('does not leak an in-flight entry after a rejection (next call retries)', async () => {
+      redis.get.mockResolvedValue(null);
+      const factory = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('transient'))
+        .mockResolvedValueOnce(['recovered']);
+
+      await expect(cache.wrap('k', 30, factory)).rejects.toThrow('transient');
+      // The failed flight must be cleared so a later request re-runs the factory.
+      await expect(cache.wrap('k', 30, factory)).resolves.toEqual(['recovered']);
+      expect(factory).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -44,14 +44,17 @@ export class ClaimsService {
   }
 
   /**
-   * Bust every cached list a claim write can stale: the claims lists, and the
-   * users lists (each user row carries a claimCount a write can change).
+   * Bust the cached lists a claim write stales. The claims lists are always
+   * affected. Pass `includeUsers` only when the write changes a user's
+   * claimCount (i.e. claim creation) — a status change leaves the count intact,
+   * so it must not needlessly bust the users lists.
    */
-  private async invalidateListCaches(): Promise<void> {
-    await Promise.all([
-      this.cache.delByPattern(everythingIn(CLAIMS_LIST_NS)),
-      this.cache.delByPattern(everythingIn(USERS_LIST_NS)),
-    ]);
+  private async invalidateClaimLists(includeUsers: boolean): Promise<void> {
+    const patterns = [everythingIn(CLAIMS_LIST_NS)];
+    if (includeUsers) {
+      patterns.push(everythingIn(USERS_LIST_NS));
+    }
+    await Promise.all(patterns.map((pattern) => this.cache.delByPattern(pattern)));
   }
 
   async findOne(id: string): Promise<Claim> {
@@ -94,7 +97,7 @@ export class ClaimsService {
     });
 
     const saved = await this.claims.save(claim);
-    await this.invalidateListCaches();
+    await this.invalidateClaimLists(true); // new claim → users' claimCount changes too
     return this.findOne(saved.id);
   }
 
@@ -134,7 +137,7 @@ export class ClaimsService {
       await manager.save(note);
     });
 
-    await this.invalidateListCaches();
+    await this.invalidateClaimLists(false); // status change doesn't alter any claimCount
     return this.findOne(id);
   }
 
