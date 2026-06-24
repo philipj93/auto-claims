@@ -10,6 +10,9 @@ describe('AuthController', () => {
   let authService: {
     login: ReturnType<typeof vi.fn>;
     register: ReturnType<typeof vi.fn>;
+    refresh: ReturnType<typeof vi.fn>;
+    logout: ReturnType<typeof vi.fn>;
+    logoutAll: ReturnType<typeof vi.fn>;
     toAuthUser: ReturnType<typeof vi.fn>;
   };
   let usersService: { findOne: ReturnType<typeof vi.fn> };
@@ -18,6 +21,9 @@ describe('AuthController', () => {
     authService = {
       login: vi.fn(),
       register: vi.fn(),
+      refresh: vi.fn(),
+      logout: vi.fn(),
+      logoutAll: vi.fn(),
       toAuthUser: vi.fn((u) => ({ id: u.id, username: u.username })),
     };
     usersService = { findOne: vi.fn() };
@@ -33,18 +39,15 @@ describe('AuthController', () => {
     controller = moduleRef.get(AuthController);
   });
 
-  it('POST /login delegates to AuthService.login', async () => {
-    authService.login.mockResolvedValue({ accessToken: 't', user: { username: 'ada' } });
+  it('POST /login delegates to AuthService.login with the client fingerprint', async () => {
+    authService.login.mockResolvedValue({ accessToken: 't', refreshToken: 'r', user: {} });
     const body = { username: 'ada', password: 'pw' };
-    expect(await controller.login(body as never)).toEqual({
-      accessToken: 't',
-      user: { username: 'ada' },
-    });
-    expect(authService.login).toHaveBeenCalledWith(body);
+    await controller.login(body as never, 'UA', '1.2.3.4');
+    expect(authService.login).toHaveBeenCalledWith(body, { userAgent: 'UA', ip: '1.2.3.4' });
   });
 
-  it('POST /register delegates to AuthService.register', async () => {
-    authService.register.mockResolvedValue({ accessToken: 't', user: { username: 'ada' } });
+  it('POST /register delegates to AuthService.register with the client fingerprint', async () => {
+    authService.register.mockResolvedValue({ accessToken: 't', refreshToken: 'r', user: {} });
     const body = {
       username: 'ada',
       email: 'a@b.com',
@@ -52,8 +55,26 @@ describe('AuthController', () => {
       firstName: 'A',
       lastName: 'B',
     };
-    await controller.register(body as never);
-    expect(authService.register).toHaveBeenCalledWith(body);
+    await controller.register(body as never, undefined, '');
+    // a missing user-agent / ip collapse to null
+    expect(authService.register).toHaveBeenCalledWith(body, { userAgent: null, ip: null });
+  });
+
+  it('POST /refresh delegates to AuthService.refresh', async () => {
+    authService.refresh.mockResolvedValue({ accessToken: 't2', refreshToken: 'r2' });
+    const result = await controller.refresh({ refreshToken: 'r1' } as never, 'UA', '1.2.3.4');
+    expect(authService.refresh).toHaveBeenCalledWith('r1', { userAgent: 'UA', ip: '1.2.3.4' });
+    expect(result).toEqual({ accessToken: 't2', refreshToken: 'r2' });
+  });
+
+  it('POST /logout delegates to AuthService.logout', async () => {
+    await controller.logout({ refreshToken: 'r1' } as never);
+    expect(authService.logout).toHaveBeenCalledWith('r1');
+  });
+
+  it('POST /logout-all delegates to AuthService.logoutAll for the current user', async () => {
+    await controller.logoutAll({ id: 'user-1' } as never);
+    expect(authService.logoutAll).toHaveBeenCalledWith('user-1');
   });
 
   it('GET /me re-loads the full user and returns the safe view', async () => {

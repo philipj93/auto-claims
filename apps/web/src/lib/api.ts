@@ -9,9 +9,9 @@ import type {
   Paginated,
   User,
 } from '@repo/types';
+import { ACCESS_TOKEN_COOKIE } from './cookies';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000/api';
-const ACCESS_TOKEN_COOKIE = 'access_token';
 
 export type UserWithCount = User & { claimCount: number };
 
@@ -34,10 +34,12 @@ async function apiGet<T>(path: string): Promise<T> {
     return null as T;
   }
   if (res.status === 401) {
-    // The cookie is present but the token is expired/invalid (the daily case once
-    // JWT_EXPIRES_IN lapses). apiGet only runs server-side from RSC data fetches, so
-    // redirect to /login rather than throwing an uncaught 500. redirect() throws an
-    // internal NEXT_REDIRECT control-flow signal that must propagate uncaught.
+    // Middleware refreshes an expired access token *before* the render reaches
+    // here (see middleware.ts), so a 401 at this point means the session is gone
+    // — refresh token expired, reused, or revoked. apiGet only runs server-side
+    // from RSC data fetches (which cannot write cookies), so we can't rotate
+    // here; redirect to /login. redirect() throws an internal NEXT_REDIRECT
+    // control-flow signal that must propagate uncaught.
     redirect('/login');
   }
   if (!res.ok) {

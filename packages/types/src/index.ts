@@ -195,10 +195,33 @@ export interface AuthUser {
   lastName: string;
 }
 
-/** Response from login/register: the bearer token plus the signed-in user. */
+/**
+ * Response from login/register: a short-lived access token, the opaque refresh
+ * token used to mint new access tokens, and the signed-in user.
+ */
 export interface AuthResponse {
   accessToken: string;
+  refreshToken: string;
   user: AuthUser;
+}
+
+/** Body for POST /api/auth/refresh — exchanges a refresh token for a fresh pair. */
+export interface RefreshInput {
+  refreshToken: string;
+}
+
+/** Body for POST /api/auth/logout — revokes the session behind this refresh token. */
+export interface LogoutInput {
+  refreshToken: string;
+}
+
+/**
+ * Response from POST /api/auth/refresh: a new access token plus the **rotated**
+ * refresh token. The presented refresh token is invalid after this call.
+ */
+export interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
 }
 
 /** Decoded JWT claims. `sub` is the user id. */

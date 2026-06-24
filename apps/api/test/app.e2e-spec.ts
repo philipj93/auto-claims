@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
@@ -17,16 +18,19 @@ import { ClaimsController } from '../src/claims/claims.controller';
 import { ClaimsService } from '../src/claims/claims.service';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
+import { SessionService } from '../src/auth/session.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { User } from '../src/entities/user.entity';
 import { Vehicle } from '../src/entities/vehicle.entity';
 import { Claim } from '../src/entities/claim.entity';
+import { UserSession } from '../src/entities/user-session.entity';
 
 import {
   createMockQueryBuilder,
   createMockRepository,
   type MockRepository,
 } from './utils/mock-repository';
+import { inMemorySessionRepo } from './utils/session-repo';
 import {
   CLAIM_ID,
   USER_ID,
@@ -74,10 +78,13 @@ describe('API (e2e)', () => {
         UsersService,
         ClaimsService,
         AuthService,
+        SessionService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: getRepositoryToken(User), useValue: users },
         { provide: getRepositoryToken(Vehicle), useValue: vehicles },
         { provide: getRepositoryToken(Claim), useValue: claims },
+        { provide: getRepositoryToken(UserSession), useValue: inMemorySessionRepo() },
+        { provide: ConfigService, useValue: { get: (_k: string, d: string) => d } },
         { provide: DataSource, useValue: dataSource },
         { provide: RedisService, useValue: { ping: async () => 'PONG' } },
         // Pass-through cache: read straight through to the repos, invalidation is a no-op.
