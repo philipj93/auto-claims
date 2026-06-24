@@ -2,15 +2,20 @@ import { afterAll, beforeAll, describe, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
+import { SessionService } from '../src/auth/session.service';
 import { UsersService } from '../src/users/users.service';
+import { UserSession } from '../src/entities/user-session.entity';
 import { hashPassword } from '../src/auth/hashing';
 import { makeUser } from './utils/fixtures';
+import { inMemorySessionRepo } from './utils/session-repo';
 
 describe('Throttling (e2e)', () => {
   let app: INestApplication;
@@ -32,8 +37,11 @@ describe('Throttling (e2e)', () => {
       controllers: [AuthController],
       providers: [
         AuthService,
+        SessionService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: UsersService, useValue: users },
+        { provide: getRepositoryToken(UserSession), useValue: inMemorySessionRepo() },
+        { provide: ConfigService, useValue: { get: (_k: string, d: string) => d } },
       ],
     }).compile();
 

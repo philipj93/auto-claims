@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
+import { SessionService } from './session.service';
 import { UsersService } from '../users/users.service';
 import { makeUser } from '../../test/utils/fixtures';
 import { hashPassword } from './hashing';
@@ -13,22 +14,39 @@ describe('AuthService', () => {
     findByUsername: ReturnType<typeof vi.fn>;
     existsByUsernameOrEmail: ReturnType<typeof vi.fn>;
     createUser: ReturnType<typeof vi.fn>;
+    findAuthById: ReturnType<typeof vi.fn>;
   };
   let jwt: { signAsync: ReturnType<typeof vi.fn> };
+  let sessions: {
+    create: ReturnType<typeof vi.fn>;
+    verify: ReturnType<typeof vi.fn>;
+    rotate: ReturnType<typeof vi.fn>;
+    revoke: ReturnType<typeof vi.fn>;
+    revokeAll: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     usersService = {
       findByUsername: vi.fn(),
       existsByUsernameOrEmail: vi.fn(),
       createUser: vi.fn(),
+      findAuthById: vi.fn(),
     };
     jwt = { signAsync: vi.fn().mockResolvedValue('signed.jwt.token') };
+    sessions = {
+      create: vi.fn().mockResolvedValue('refresh.token.value'),
+      verify: vi.fn(),
+      rotate: vi.fn().mockResolvedValue('rotated.token'),
+      revoke: vi.fn(),
+      revokeAll: vi.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: UsersService, useValue: usersService },
         { provide: JwtService, useValue: jwt },
+        { provide: SessionService, useValue: sessions },
       ],
     }).compile();
 
@@ -36,18 +54,24 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('returns a token and safe user for valid credentials', async () => {
+    it('returns an access + refresh token and safe user for valid credentials', async () => {
       const hash = await hashPassword('Sup3r$ecret');
       usersService.findByUsername.mockResolvedValue(
-        makeUser({ username: 'ada', passwordHash: hash }),
+        makeUser({ id: 'user-1', username: 'ada', passwordHash: hash }),
       );
 
-      const result = await service.login({ username: 'ada', password: 'Sup3r$ecret' });
+      const result = await service.login(
+        { username: 'ada', password: 'Sup3r$ecret' },
+        { userAgent: 'UA', ip: '1.2.3.4' },
+      );
 
       expect(result.accessToken).toBe('signed.jwt.token');
+      expect(result.refreshToken).toBe('refresh.token.value');
       expect(result.user).toMatchObject({ username: 'ada' });
       expect(result.user).not.toHaveProperty('passwordHash');
       expect(jwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ username: 'ada' }));
+      // a session is opened for the user, carrying the client fingerprint
+      expect(sessions.create).toHaveBeenCalledWith('user-1', { userAgent: 'UA', ip: '1.2.3.4' });
     });
 
     it('throws Unauthorized for an unknown user', async () => {
@@ -55,6 +79,7 @@ describe('AuthService', () => {
       await expect(service.login({ username: 'nope', password: 'x' })).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+      expect(sessions.create).not.toHaveBeenCalled();
     });
 
     it('throws Unauthorized for a wrong password', async () => {
@@ -75,9 +100,9 @@ describe('AuthService', () => {
       lastName: 'Lovelace',
     };
 
-    it('creates a user and returns a token', async () => {
+    it('creates a user and returns both tokens', async () => {
       usersService.existsByUsernameOrEmail.mockResolvedValue(false);
-      usersService.createUser.mockResolvedValue(makeUser({ username: 'ada' }));
+      usersService.createUser.mockResolvedValue(makeUser({ id: 'user-1', username: 'ada' }));
 
       const result = await service.register(body);
 
@@ -89,11 +114,75 @@ describe('AuthService', () => {
       expect(arg.passwordHash).not.toBe('Sup3r$ecret');
       expect(arg).not.toHaveProperty('password');
       expect(result.accessToken).toBe('signed.jwt.token');
+      expect(result.refreshToken).toBe('refresh.token.value');
+      expect(sessions.create).toHaveBeenCalledWith('user-1', undefined);
     });
 
     it('throws Conflict when the username or email is taken', async () => {
       usersService.existsByUsernameOrEmail.mockResolvedValue(true);
       await expect(service.register(body)).rejects.toBeInstanceOf(ConflictException);
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refresh', () => {
+    const session = { id: 'sess-1', userId: 'user-1' };
+
+    it('verifies, signs a fresh access token, then rotates', async () => {
+      sessions.verify.mockResolvedValue(session);
+      usersService.findAuthById.mockResolvedValue({ id: 'user-1', username: 'ada' });
+
+      const result = await service.refresh('old.token', { userAgent: 'UA', ip: '1.2.3.4' });
+
+      expect(sessions.verify).toHaveBeenCalledWith('old.token');
+      expect(usersService.findAuthById).toHaveBeenCalledWith('user-1');
+      expect(sessions.rotate).toHaveBeenCalledWith(session, { userAgent: 'UA', ip: '1.2.3.4' });
+      expect(jwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ sub: 'user-1' }));
+      expect(result).toEqual({ accessToken: 'signed.jwt.token', refreshToken: 'rotated.token' });
+    });
+
+    it('signs the access token BEFORE rotating (rotate is the last fallible step)', async () => {
+      const order: string[] = [];
+      sessions.verify.mockResolvedValue(session);
+      usersService.findAuthById.mockResolvedValue({ id: 'user-1', username: 'ada' });
+      jwt.signAsync.mockImplementation(async () => {
+        order.push('sign');
+        return 'signed.jwt.token';
+      });
+      sessions.rotate.mockImplementation(async () => {
+        order.push('rotate');
+        return 'rotated.token';
+      });
+
+      await service.refresh('old.token');
+      expect(order).toEqual(['sign', 'rotate']);
+    });
+
+    it('throws Unauthorized and does not rotate when the user no longer exists', async () => {
+      sessions.verify.mockResolvedValue(session);
+      usersService.findAuthById.mockResolvedValue(null);
+
+      await expect(service.refresh('old.token')).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it('propagates Unauthorized from a rejected verification without signing', async () => {
+      sessions.verify.mockRejectedValue(new UnauthorizedException());
+      await expect(service.refresh('bad.token')).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(jwt.signAsync).not.toHaveBeenCalled();
+      expect(sessions.rotate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('logout', () => {
+    it('revokes the session behind the refresh token', async () => {
+      await service.logout('some.token');
+      expect(sessions.revoke).toHaveBeenCalledWith('some.token');
+    });
+
+    it('revokes every session for the user on logout-all', async () => {
+      await service.logoutAll('user-1');
+      expect(sessions.revokeAll).toHaveBeenCalledWith('user-1');
     });
   });
 });

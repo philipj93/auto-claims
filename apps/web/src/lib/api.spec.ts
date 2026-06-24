@@ -121,6 +121,19 @@ describe('apiGet error handling', () => {
 });
 
 describe('loginRequest', () => {
+  it('returns the access and refresh token pair on success', async () => {
+    server.use(
+      http.post(`${API_BASE}/auth/login`, () =>
+        HttpResponse.json({ accessToken: 'a', refreshToken: 'r', user: { username: 'ada' } }),
+      ),
+    );
+
+    await expect(loginRequest({ username: 'ada', password: 'x' })).resolves.toMatchObject({
+      accessToken: 'a',
+      refreshToken: 'r',
+    });
+  });
+
   it('throws RateLimitError on a 429', async () => {
     server.use(http.post(`${API_BASE}/auth/login`, () => new HttpResponse(null, { status: 429 })));
 

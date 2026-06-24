@@ -6,8 +6,9 @@ import { Policy } from '../entities/policy.entity';
 import { Claim } from '../entities/claim.entity';
 import { ClaimDocument } from '../entities/claim-document.entity';
 import { ClaimNote } from '../entities/claim-note.entity';
+import { UserSession } from '../entities/user-session.entity';
 
-export const entities = [User, Vehicle, Policy, Claim, ClaimDocument, ClaimNote];
+export const entities = [User, Vehicle, Policy, Claim, ClaimDocument, ClaimNote, UserSession];
 
 /**
  * Builds TypeORM connection options from environment variables.

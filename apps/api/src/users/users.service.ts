@@ -163,6 +163,15 @@ export class UsersService {
     });
   }
 
+  /**
+   * Minimal lookup for minting an access token on refresh: selects only the
+   * fields the JWT payload needs, with no relations. Returns null if the user
+   * no longer exists (caller maps that to a 401, not a 404).
+   */
+  findAuthById(id: string): Promise<Pick<User, 'id' | 'username'> | null> {
+    return this.users.findOne({ where: { id }, select: { id: true, username: true } });
+  }
+
   /** True if any user already uses this username or email (registration guard). */
   async existsByUsernameOrEmail(username: string, email: string): Promise<boolean> {
     const existing = await this.users.findOne({
