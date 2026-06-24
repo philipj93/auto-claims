@@ -20,11 +20,13 @@ import { inMemorySessionRepo } from './utils/session-repo';
 describe('Auth (e2e)', () => {
   let app: INestApplication;
   let sessionRepo: ReturnType<typeof inMemorySessionRepo>;
+  const userId = '11111111-1111-4111-8111-111111111111';
   const users = {
     findByUsername: vi.fn(),
     existsByUsernameOrEmail: vi.fn(),
     createUser: vi.fn(),
     findOne: vi.fn(),
+    findAuthById: vi.fn(),
   };
 
   beforeAll(async () => {
@@ -59,15 +61,14 @@ describe('Auth (e2e)', () => {
 
   beforeEach(() => {
     sessionRepo._rows.clear();
-    users.findOne.mockResolvedValue(makeUser({ id: '11111111-1111-4111-8111-111111111111' }));
+    users.findOne.mockResolvedValue(makeUser({ id: userId }));
+    users.findAuthById.mockResolvedValue({ id: userId, username: 'ada' });
   });
 
   /** Log in and return the issued { accessToken, refreshToken }. */
   async function login() {
     const passwordHash = await hashPassword('Sup3r$ecret');
-    users.findByUsername.mockResolvedValue(
-      makeUser({ id: '11111111-1111-4111-8111-111111111111', username: 'ada', passwordHash }),
-    );
+    users.findByUsername.mockResolvedValue(makeUser({ id: userId, username: 'ada', passwordHash }));
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ username: 'ada', password: 'Sup3r$ecret' })
@@ -139,5 +140,48 @@ describe('Auth (e2e)', () => {
       .expect(204);
 
     await request(app.getHttpServer()).post('/api/auth/refresh').send({ refreshToken }).expect(401);
+  });
+
+  it('rejects refresh/logout bodies missing the token (400)', async () => {
+    await request(app.getHttpServer()).post('/api/auth/refresh').send({}).expect(400);
+    await request(app.getHttpServer())
+      .post('/api/auth/logout')
+      .send({ refreshToken: '' })
+      .expect(400);
+  });
+
+  it('blocks POST /api/auth/logout-all without a token (401)', async () => {
+    await request(app.getHttpServer()).post('/api/auth/logout-all').expect(401);
+  });
+
+  it('logout-all revokes every session for the user (204, all tokens dead)', async () => {
+    const first = await login();
+    const second = await login();
+    expect(sessionRepo._rows.size).toBe(2);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/logout-all')
+      .set('Authorization', `Bearer ${second.accessToken}`)
+      .expect(204);
+
+    expect(sessionRepo._rows.size).toBe(0);
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: second.refreshToken })
+      .expect(401);
+  });
+
+  it('returns the signed-in user from GET /api/auth/me with a valid token (200)', async () => {
+    const { accessToken } = await login();
+    const res = await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(res.body).toMatchObject({ username: 'ada' });
+    expect(res.body).not.toHaveProperty('passwordHash');
   });
 });

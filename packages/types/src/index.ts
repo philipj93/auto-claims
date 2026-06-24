@@ -196,33 +196,36 @@ export interface AuthUser {
 }
 
 /**
- * Response from login/register: a short-lived access token, the opaque refresh
- * token used to mint new access tokens, and the signed-in user.
+ * A short-lived access token paired with the opaque refresh token used to mint
+ * new access tokens. Shared by every endpoint that issues credentials, so the
+ * "always a fresh pair" invariant lives in one place.
  */
-export interface AuthResponse {
+export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+}
+
+/** Response from login/register: a fresh token pair plus the signed-in user. */
+export interface AuthResponse extends TokenPair {
   user: AuthUser;
 }
 
-/** Body for POST /api/auth/refresh — exchanges a refresh token for a fresh pair. */
-export interface RefreshInput {
+/** Body carrying a single refresh token (POST /api/auth/refresh and /logout). */
+export interface RefreshTokenBody {
   refreshToken: string;
 }
 
+/** Body for POST /api/auth/refresh — exchanges a refresh token for a fresh pair. */
+export type RefreshInput = RefreshTokenBody;
+
 /** Body for POST /api/auth/logout — revokes the session behind this refresh token. */
-export interface LogoutInput {
-  refreshToken: string;
-}
+export type LogoutInput = RefreshTokenBody;
 
 /**
  * Response from POST /api/auth/refresh: a new access token plus the **rotated**
  * refresh token. The presented refresh token is invalid after this call.
  */
-export interface RefreshResponse {
-  accessToken: string;
-  refreshToken: string;
-}
+export type RefreshResponse = TokenPair;
 
 /** Decoded JWT claims. `sub` is the user id. */
 export interface JwtPayload {

@@ -10,7 +10,12 @@ import {
   refreshSecretMatches,
 } from './refresh-token';
 
-/** Best-effort client fingerprint stored alongside a session. */
+/**
+ * Best-effort client fingerprint stored alongside a session. A field that is
+ * `undefined` means "not provided" — on {@link SessionService.rotate} it leaves
+ * the stored value unchanged; an explicit `null` clears it. On `create` both
+ * collapse to `null`.
+ */
 export interface SessionMeta {
   userAgent?: string | null;
   ip?: string | null;
@@ -52,15 +57,15 @@ export class SessionService {
   }
 
   /**
-   * Validate and **rotate** a refresh token: returns the owning user id plus a
-   * freshly minted token, and invalidates the presented one. Throws 401 on any
-   * failure. Presenting a token whose secret no longer matches the stored hash
-   * (an already-rotated token) destroys the session — the reuse / theft signal.
+   * Validate a refresh token and return its live session — **without mutating**
+   * it. Throws 401 on any failure. Presenting a token whose secret no longer
+   * matches the stored hash (an already-rotated token) destroys the session —
+   * the reuse / theft signal. Kept separate from {@link rotate} so the caller
+   * can do its own fallible work (e.g. minting an access token) *before* the
+   * token is rotated; that way a later failure can't strand the client with an
+   * already-invalidated token and trip a false reuse signal on its next refresh.
    */
-  async rotate(
-    rawToken: string,
-    meta: SessionMeta = {},
-  ): Promise<{ userId: string; refreshToken: string }> {
+  async verify(rawToken: string): Promise<UserSession> {
     const parts = parseRefreshToken(rawToken);
     if (!parts) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -82,6 +87,16 @@ export class SessionService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
+    return session;
+  }
+
+  /**
+   * Rotate a previously-{@link verify}d session: mint a new secret, slide the
+   * expiry window forward, refresh the client fingerprint, and return the new
+   * raw refresh token. This is the last fallible step in a refresh, so it runs
+   * after the access token has already been signed.
+   */
+  async rotate(session: UserSession, meta: SessionMeta = {}): Promise<string> {
     const { secret, hash } = generateRefreshSecret();
     const now = new Date();
     session.refreshTokenHash = hash;
@@ -90,11 +105,7 @@ export class SessionService {
     if (meta.userAgent !== undefined) session.userAgent = meta.userAgent ?? null;
     if (meta.ip !== undefined) session.ip = meta.ip ?? null;
     await this.sessions.save(session);
-
-    return {
-      userId: session.userId,
-      refreshToken: composeRefreshToken(session.id, secret),
-    };
+    return composeRefreshToken(session.id, secret);
   }
 
   /**

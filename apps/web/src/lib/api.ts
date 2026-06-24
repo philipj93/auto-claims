@@ -35,11 +35,12 @@ async function apiGet<T>(path: string): Promise<T> {
   }
   if (res.status === 401) {
     // Middleware refreshes an expired access token *before* the render reaches
-    // here (see middleware.ts), so a 401 at this point means the session is gone
-    // — refresh token expired, reused, or revoked. apiGet only runs server-side
-    // from RSC data fetches (which cannot write cookies), so we can't rotate
-    // here; redirect to /login. redirect() throws an internal NEXT_REDIRECT
-    // control-flow signal that must propagate uncaught.
+    // here (see middleware.ts), so a 401 here usually means the session can't be
+    // recovered — refresh token expired, reused, or revoked (or, more rarely, a
+    // token the API rejects despite a valid `exp`, e.g. after a secret rotation).
+    // apiGet only runs server-side from RSC data fetches (which cannot write
+    // cookies), so we can't rotate here; redirect to /login. redirect() throws an
+    // internal NEXT_REDIRECT control-flow signal that must propagate uncaught.
     redirect('/login');
   }
   if (!res.ok) {

@@ -29,7 +29,7 @@ export class UserSession {
   user: User;
 
   /** sha256 hex of the refresh token's secret half — never the token itself. */
-  @Column({ name: 'refresh_token_hash' })
+  @Column({ name: 'refresh_token_hash', type: 'varchar', length: 64 })
   refreshTokenHash: string;
 
   /** User-agent of the client that created/last-rotated the session (best-effort). */
@@ -40,6 +40,11 @@ export class UserSession {
   @Column({ type: 'varchar', nullable: true })
   ip: string | null;
 
+  /**
+   * Last time this session minted an access token. Recorded for future
+   * idle-timeout / "active sessions" features; expiry is currently bounded only
+   * by `expiresAt` (slid forward on each rotation).
+   */
   @Column({ name: 'last_used_at', type: 'timestamptz' })
   lastUsedAt: Date;
 

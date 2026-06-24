@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { NextRequest } from 'next/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/msw/server';
 import { API_BASE } from '@/test/msw/handlers';
 import { middleware } from './middleware';
@@ -64,7 +64,7 @@ describe('middleware', () => {
     expect(res.cookies.get('access_token')?.value).toBe('a');
   });
 
-  it('redirects to /login and clears cookies when refresh is rejected', async () => {
+  it('redirects to /login and clears cookies when refresh is rejected (auth 401)', async () => {
     server.use(
       http.post(`${API_BASE}/auth/refresh`, () => new HttpResponse(null, { status: 401 })),
     );
@@ -77,5 +77,22 @@ describe('middleware', () => {
     // delete() writes an empty, immediately-expiring cookie
     expect(res.cookies.get('access_token')?.value).toBeFalsy();
     expect(res.cookies.get('refresh_token')?.value).toBeFalsy();
+  });
+
+  it('does NOT log the user out on a transient API failure (5xx / network)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    server.use(
+      http.post(`${API_BASE}/auth/refresh`, () => new HttpResponse(null, { status: 503 })),
+    );
+
+    const res = await middleware(
+      requestFor('/dashboard', { access_token: accessToken(-100), refresh_token: 'still-valid' }),
+    );
+
+    // pass-through, no redirect, and the refresh cookie is left intact for a retry
+    expect(isPassThrough(res)).toBe(true);
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.cookies.get('refresh_token')?.value).toBeUndefined();
+    errorSpy.mockRestore();
   });
 });

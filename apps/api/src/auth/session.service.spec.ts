@@ -13,7 +13,7 @@ import {
   parseRefreshToken,
 } from './refresh-token';
 
-/** A persisted session row with a known secret, for rotate/revoke tests. */
+/** A persisted session row with a known secret, for verify/rotate/revoke tests. */
 function sessionRow(overrides: Partial<UserSession> = {}): {
   row: UserSession;
   secret: string;
@@ -33,25 +33,35 @@ function sessionRow(overrides: Partial<UserSession> = {}): {
   return { row, secret };
 }
 
+/** Build a SessionService over a mock repo, with a configurable TTL (days). */
+async function buildService(ttlDays = '30'): Promise<{
+  service: SessionService;
+  repo: MockRepository<UserSession>;
+}> {
+  const repo = createMockRepository<UserSession>();
+  repo.save.mockImplementation(async (s: UserSession) => ({ id: s.id ?? 'sess-1', ...s }));
+  repo.delete.mockResolvedValue({ affected: 1, raw: [] });
+
+  const moduleRef = await Test.createTestingModule({
+    providers: [
+      SessionService,
+      { provide: getRepositoryToken(UserSession), useValue: repo },
+      {
+        provide: ConfigService,
+        useValue: { get: (_k: string, d: string) => (ttlDays === '30' ? d : ttlDays) },
+      },
+    ],
+  }).compile();
+
+  return { service: moduleRef.get(SessionService), repo };
+}
+
 describe('SessionService', () => {
   let service: SessionService;
   let repo: MockRepository<UserSession>;
 
   beforeEach(async () => {
-    repo = createMockRepository<UserSession>();
-    // Simulate the DB assigning an id on insert.
-    repo.save.mockImplementation(async (s: UserSession) => ({ id: s.id ?? 'sess-1', ...s }));
-    repo.delete.mockResolvedValue({ affected: 1, raw: [] });
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [
-        SessionService,
-        { provide: getRepositoryToken(UserSession), useValue: repo },
-        { provide: ConfigService, useValue: { get: (_k: string, d: string) => d } },
-      ],
-    }).compile();
-
-    service = moduleRef.get(SessionService);
+    ({ service, repo } = await buildService());
   });
 
   describe('create', () => {
@@ -69,29 +79,36 @@ describe('SessionService', () => {
       expect(saved.refreshTokenHash).not.toContain(parts.secret);
       expect(saved.expiresAt.getTime()).toBeGreaterThan(Date.now());
     });
+
+    it('honors REFRESH_TOKEN_EXPIRES_IN_DAYS for the expiry window', async () => {
+      const seven = await buildService('7');
+      const before = Date.now();
+      await seven.service.create('user-1');
+      const saved = seven.repo.save.mock.calls[0][0];
+      const days = (saved.expiresAt.getTime() - before) / (24 * 60 * 60 * 1000);
+      expect(days).toBeGreaterThan(6.9);
+      expect(days).toBeLessThan(7.1);
+    });
   });
 
-  describe('rotate', () => {
-    it('issues a new token and updates the stored hash', async () => {
+  describe('verify', () => {
+    it('returns the live session for a valid token without mutating it', async () => {
       const { row, secret } = sessionRow();
       repo.findOne.mockResolvedValue(row);
 
-      const result = await service.rotate(composeRefreshToken('sess-1', secret));
-      const newParts = parseRefreshToken(result.refreshToken)!;
+      const result = await service.verify(composeRefreshToken('sess-1', secret));
 
-      expect(result.userId).toBe('user-1');
-      expect(result.refreshToken).not.toBe(composeRefreshToken('sess-1', secret));
-      expect(row.refreshTokenHash).toBe(hashRefreshSecret(newParts.secret)); // rotated
+      expect(result).toBe(row);
       expect(repo.delete).not.toHaveBeenCalled();
+      expect(repo.save).not.toHaveBeenCalled();
     });
 
     it('revokes the session when an already-rotated token is reused', async () => {
       const { row } = sessionRow(); // stored hash belongs to the CURRENT secret
       repo.findOne.mockResolvedValue(row);
 
-      // present a stale secret that no longer matches the stored hash
       await expect(
-        service.rotate(composeRefreshToken('sess-1', 'an-old-rotated-secret')),
+        service.verify(composeRefreshToken('sess-1', 'an-old-rotated-secret')),
       ).rejects.toBeInstanceOf(UnauthorizedException);
       expect(repo.delete).toHaveBeenCalledWith({ id: 'sess-1' });
     });
@@ -100,20 +117,44 @@ describe('SessionService', () => {
       const { row, secret } = sessionRow({ expiresAt: new Date(Date.now() - 1_000) });
       repo.findOne.mockResolvedValue(row);
 
-      await expect(service.rotate(composeRefreshToken('sess-1', secret))).rejects.toBeInstanceOf(
+      await expect(service.verify(composeRefreshToken('sess-1', secret))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
       expect(repo.delete).toHaveBeenCalledWith({ id: 'sess-1' });
     });
 
     it('rejects malformed or unknown tokens without revoking', async () => {
-      await expect(service.rotate('garbage')).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.verify('garbage')).rejects.toBeInstanceOf(UnauthorizedException);
 
       repo.findOne.mockResolvedValue(null);
-      await expect(service.rotate(composeRefreshToken('missing', 'x'))).rejects.toBeInstanceOf(
+      await expect(service.verify(composeRefreshToken('missing', 'x'))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
       expect(repo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rotate', () => {
+    it('issues a new token, updates the hash, and slides the expiry forward', async () => {
+      const { row, secret } = sessionRow({ expiresAt: new Date(Date.now() + 1_000) });
+      const previousExpiry = row.expiresAt.getTime();
+
+      const token = await service.rotate(row, { ip: '9.9.9.9' });
+      const newParts = parseRefreshToken(token)!;
+
+      expect(token).not.toBe(composeRefreshToken('sess-1', secret));
+      expect(row.refreshTokenHash).toBe(hashRefreshSecret(newParts.secret)); // rotated
+      expect(row.expiresAt.getTime()).toBeGreaterThan(previousExpiry); // sliding window
+      expect(row.lastUsedAt.getTime()).toBeGreaterThan(new Date('2026-01-01T00:00:00Z').getTime());
+      expect(row.ip).toBe('9.9.9.9');
+      expect(repo.save).toHaveBeenCalledWith(row);
+    });
+
+    it('leaves the fingerprint unchanged when meta omits a field (undefined)', async () => {
+      const { row } = sessionRow({ userAgent: 'old-UA', ip: 'old-ip' });
+      await service.rotate(row, { ip: 'new-ip' }); // userAgent omitted
+      expect(row.userAgent).toBe('old-UA'); // preserved
+      expect(row.ip).toBe('new-ip'); // updated
     });
   });
 

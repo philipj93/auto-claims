@@ -44,12 +44,21 @@ export class AuthService {
   /**
    * Rotate a refresh token and mint a fresh access token. The presented refresh
    * token is invalid after this call; reuse of it revokes the session (handled
-   * in SessionService.rotate).
+   * in SessionService.verify).
+   *
+   * Order matters: validate the session and sign the new access token *before*
+   * rotating. Rotation is the last fallible step, so a failure here (e.g. the
+   * user was deleted) can't leave the client holding an already-invalidated
+   * token that would trip a false reuse signal on the next refresh.
    */
   async refresh(refreshToken: string, meta?: SessionMeta): Promise<RefreshResponse> {
-    const { userId, refreshToken: rotated } = await this.sessions.rotate(refreshToken, meta);
-    const user = await this.users.findOne(userId);
+    const session = await this.sessions.verify(refreshToken);
+    const user = await this.users.findAuthById(session.userId);
+    if (!user) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
     const accessToken = await this.signAccessToken(user);
+    const rotated = await this.sessions.rotate(session, meta);
     return { accessToken, refreshToken: rotated };
   }
 
@@ -81,7 +90,7 @@ export class AuthService {
     return { accessToken, refreshToken, user: this.toAuthUser(user) };
   }
 
-  private signAccessToken(user: User): Promise<string> {
+  private signAccessToken(user: Pick<User, 'id' | 'username'>): Promise<string> {
     const payload: JwtPayload = { sub: user.id, username: user.username };
     return this.jwt.signAsync(payload);
   }

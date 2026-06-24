@@ -6,7 +6,7 @@ import {
   refreshCookieOptions,
 } from '@/lib/cookies';
 import { isJwtExpired } from '@/lib/jwt';
-import { refreshRequest } from '@/lib/refresh';
+import { refreshRequest, RefreshError } from '@/lib/refresh';
 
 const PUBLIC_PATHS = ['/login', '/register'];
 
@@ -48,8 +48,18 @@ export async function middleware(request: NextRequest) {
     response.cookies.set(ACCESS_TOKEN_COOKIE, tokens.accessToken, accessCookieOptions());
     response.cookies.set(REFRESH_TOKEN_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return response;
-  } catch {
-    // Refresh rejected (expired / reused / revoked): clear cookies and log in.
+  } catch (err) {
+    // Only a genuine auth rejection (refresh token expired / reused / revoked)
+    // means the session is unrecoverable — clear cookies and send to /login.
+    // A network error or 5xx means the API is down or broken but the refresh
+    // token may well still be valid; don't destroy the user's credentials over a
+    // transient outage. Let the request proceed with the existing cookies so the
+    // next navigation retries the refresh once the API recovers.
+    const isAuthRejection = err instanceof RefreshError && err.status >= 400 && err.status < 500;
+    if (!isAuthRejection) {
+      console.error('[middleware] token refresh failed (treating as transient):', err);
+      return NextResponse.next();
+    }
     const response = redirectToLogin(request);
     response.cookies.delete(ACCESS_TOKEN_COOKIE);
     response.cookies.delete(REFRESH_TOKEN_COOKIE);

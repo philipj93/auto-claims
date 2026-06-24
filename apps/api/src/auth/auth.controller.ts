@@ -66,6 +66,7 @@ export class AuthController {
   }
 
   /** POST /api/auth/logout-all — revoke every session for the current user. */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('logout-all')
   logoutAll(@CurrentUser() current: RequestUser): Promise<void> {

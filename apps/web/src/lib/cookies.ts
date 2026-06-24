@@ -9,9 +9,15 @@ export const ACCESS_TOKEN_COOKIE = 'access_token';
 /** httpOnly cookie holding the opaque, rotating refresh token. */
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
-/** Access-cookie lifetime — matches the API's `JWT_EXPIRES_IN` (15m). */
+// These cookie lifetimes mirror the API's token TTLs by convention — the web app
+// can't read the API's env, so they are NOT auto-derived. If you change
+// `JWT_EXPIRES_IN` or `REFRESH_TOKEN_EXPIRES_IN_DAYS` on the API, update these to
+// match. The cookie outliving its token is harmless (middleware refreshes on the
+// JWT's own `exp`); a cookie expiring early just forces an earlier re-login.
+
+/** Access-cookie lifetime — mirrors the API's `JWT_EXPIRES_IN` (15m). */
 const ACCESS_TOKEN_MAX_AGE = 60 * 15;
-/** Refresh-cookie lifetime — matches `REFRESH_TOKEN_EXPIRES_IN_DAYS` (30d). */
+/** Refresh-cookie lifetime — mirrors `REFRESH_TOKEN_EXPIRES_IN_DAYS` (30d). */
 const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 30;
 
 /**

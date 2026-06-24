@@ -49,9 +49,12 @@ export function parseRefreshToken(token: string): RefreshTokenParts | null {
 }
 
 /**
- * Constant-time comparison of a presented secret against a stored hash. Hashing
- * the candidate first means both operands are fixed-width sha256 hex, so
- * `timingSafeEqual` never throws on a length mismatch and leaks no timing signal.
+ * Compare a presented secret against a stored hash. Hashing the candidate first
+ * means that in normal operation both operands are fixed-width sha256 hex, so
+ * `timingSafeEqual` compares equal-length buffers and the secret comparison is
+ * constant-time. The `length ===` guard only short-circuits on a malformed
+ * stored hash (never the secret, whose length isn't sensitive), avoiding
+ * `timingSafeEqual`'s throw on unequal lengths.
  */
 export function refreshSecretMatches(secret: string, storedHash: string): boolean {
   const candidate = Buffer.from(hashRefreshSecret(secret));
